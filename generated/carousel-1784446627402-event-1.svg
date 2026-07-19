@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
+  <rect width="1080" height="1350" fill="#080808"/>
+  <rect x="34" y="34" width="1012" height="1282" rx="36" fill="#0b0b0b" stroke="#24211d" stroke-width="2"/>
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#c94f3b"/><stop offset="1" stop-color="#141414"/></linearGradient>
+    <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#1d6f5f"/><stop offset="1" stop-color="#070707"/></linearGradient>
+    <linearGradient id="g3" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#d08b3e"/><stop offset="1" stop-color="#15100c"/></linearGradient>
+  </defs>
+  <rect x="92" y="92" width="278" height="260" rx="10" fill="url(#g1)"/>
+  <rect x="394" y="92" width="278" height="260" rx="10" fill="url(#g2)"/>
+  <rect x="696" y="92" width="278" height="260" rx="10" fill="url(#g3)"/>
+  <circle cx="230" cy="214" r="62" fill="#ffffff" opacity=".18"/>
+  <path d="M452 280c52-114 130-114 182 0" fill="none" stroke="#fffdfa" stroke-width="16" opacity=".25"/>
+  <path d="M762 280c34-88 90-88 124 0" fill="none" stroke="#fffdfa" stroke-width="16" opacity=".25"/>
+  <text x="988" y="91" text-anchor="end" font-family="Arial, Helvetica, sans-serif" font-size="28" font-weight="500" fill="#ffffff">1/6</text>
+  <text x="92" y="430" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="800" fill="#cfc7bc">@things2doinblr</text>
+  <text x="92" y="570" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="104" font-weight="950" fill="#ffffff">Bengaluru's Top</text>
+<text x="92" y="676" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="104" font-weight="950" fill="#ffffff">5 Events</text>
+  <text x="96" y="920" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="500" fill="#fffdfa">Verified picks from 2026-07-19 to</text>
+<text x="96" y="966" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="500" fill="#fffdfa">2026-07-24 across food, comedy,</text>
+<text x="96" y="1012" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="500" fill="#fffdfa">culture,</text>
+  <line x1="92" y1="1084" x2="988" y2="1084" stroke="#fffdfa" stroke-width="2" opacity=".45"/>
+  <text x="88" y="1150" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="900" fill="#ffffff">LOC CITY:</text>
+  <text x="248" y="1150" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="500" fill="#f4efe8">Bengaluru</text>
+  <text x="88" y="1202" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="900" fill="#ffffff">DATE WINDOW:</text>
+  <text x="248" y="1202" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="500" fill="#f4efe8">2026-07-19 to 2026-07-24</text>
+  <text x="88" y="1254" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="900" fill="#ffffff">SRC SOURCES:</text>
+  <text x="248" y="1254" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="500" fill="#f4efe8">District, Luma, AllEvents, official pages</text>
+  </svg>

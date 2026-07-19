@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
+  <rect width="1080" height="1350" fill="#f6f4ef"/>
+  <rect x="34" y="34" width="1012" height="1282" rx="36" fill="#18080b"/>
+  <rect x="64" y="64" width="952" height="594" rx="24" fill="#9d232f" opacity=".86"/>
+  <rect x="64" y="64" width="952" height="594" rx="24" fill="#000000" opacity=".24"/>
+  <circle cx="824" cy="194" r="166" fill="#f5d3d0" opacity=".18"/>
+  <circle cx="282" cy="418" r="118" fill="#f5d3d0" opacity=".16"/>
+  <path d="M116 534c144-180 320-180 464 0s280 180 396-24" fill="none" stroke="#f5d3d0" stroke-width="24" opacity=".18"/>
+  <text x="88" y="108" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="800" fill="#fffdfa">@things2doinblr</text>
+  <rect x="884" y="74" width="106" height="54" rx="27" fill="#050505" opacity=".78"/>
+  <text x="938" y="110" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="700" fill="#ffffff">3/6</text>
+  <text x="88" y="716" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="900" fill="#f5d3d0" letter-spacing="2">Comedy</text>
+  <text x="88" y="820" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="74" font-weight="950" fill="#ffffff">Vivek Samtani</text>
+<text x="88" y="898" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="74" font-weight="950" fill="#ffffff">Live</text>
+  <text x="92" y="1040" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="500" fill="#fffdfa">A sharp stand-up pick with strong city</text>
+<text x="92" y="1080" text-anchor="start" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="500" fill="#fffdfa">appeal.</text>
+  <line x1="64" y1="1110" x2="1016" y2="1110" stroke="#fffdfa" stroke-width="2" opacity=".38"/>
+  <text x="88" y="1162" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="900" fill="#ffffff">PIN VENUE:</text>
+  <text x="248" y="1162" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="500" fill="#f4efe8">The Comedy Theatre, Indiranagar</text>
+  <text x="88" y="1210" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="900" fill="#ffffff">CAL DATE:</text>
+  <text x="248" y="1210" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="500" fill="#f4efe8">21 Jul - 8 PM</text>
+  <text x="88" y="1258" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="900" fill="#ffffff">TAG PRICE:</text>
+  <text x="248" y="1258" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="500" fill="#f4efe8">Rs 499 onwards</text>
+  <text x="88" y="1306" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="700" fill="#d7d0c8">Source: in.bookmyshow.com</text>
+  </svg>
