@@ -10,12 +10,15 @@ import { signOAuthState, verifyOAuthState } from "./social/oauthState.js";
 import { publishCarousel } from "./social/publish.js";
 import { createZip } from "./utils/zip.js";
 
-function safeGeneratedPath(url, generatedDir) {
+function safeGeneratedPath(url, generatedDirs = []) {
   if (!url?.startsWith("/generated/")) return null;
   const filename = path.basename(url);
-  const filePath = path.resolve(generatedDir, filename);
-  const root = `${path.resolve(generatedDir)}${path.sep}`;
-  return filePath.startsWith(root) ? filePath : null;
+  for (const generatedDir of generatedDirs) {
+    const filePath = path.resolve(generatedDir, filename);
+    const root = `${path.resolve(generatedDir)}${path.sep}`;
+    if (filePath.startsWith(root) && fs.existsSync(filePath)) return filePath;
+  }
+  return null;
 }
 
 function downloadName(summary, id) {
@@ -68,8 +71,8 @@ export function createRouter({ repos, aiClient, config }) {
     const files = [];
     for (const slide of carousel.slides || []) {
       const image = images.get(slide.slide_number);
-      const filePath = safeGeneratedPath(image?.url, config.generatedDir);
-      if (!filePath || !fs.existsSync(filePath)) continue;
+      const filePath = safeGeneratedPath(image?.url, [config.generatedDir, config.bundledGeneratedDir]);
+      if (!filePath) continue;
       const slidePng = await sharp(filePath)
         .resize(1080, 1350, { fit: "cover", background: "#fffdfa" })
         .png()

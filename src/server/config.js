@@ -4,6 +4,8 @@ export function getConfig(env = process.env) {
   const isVercel = Boolean(env.VERCEL);
   return {
     port: Number(env.PORT || 8787),
+    bundledDbPath: path.resolve("data", "app.sqlite"),
+    bundledGeneratedDir: path.resolve("generated"),
     dbPath: env.DB_PATH || (isVercel ? "/tmp/carouselsmith.sqlite" : path.resolve("data", "app.sqlite")),
     generatedDir: env.GENERATED_DIR || (isVercel ? "/tmp/carouselsmith-generated" : path.resolve("generated")),
     authSecret: env.AUTH_SECRET || env.GEMINI_API_KEY || "dev-only-change-me",

@@ -1,4 +1,5 @@
 import express from "express";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { getConfig } from "./config.js";
@@ -9,7 +10,15 @@ import { createRouter } from "./routes.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+function seedVercelDatabase(config) {
+  if (!process.env.VERCEL) return;
+  if (config.dbPath === config.bundledDbPath || fs.existsSync(config.dbPath) || !fs.existsSync(config.bundledDbPath)) return;
+  fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
+  fs.copyFileSync(config.bundledDbPath, config.dbPath);
+}
+
 export function createApp(config = getConfig()) {
+  seedVercelDatabase(config);
   const db = openDatabase(config.dbPath);
   const repos = createRepositories(db);
   const aiClient = createGeminiClient(config.geminiApiKey, {
@@ -25,6 +34,9 @@ export function createApp(config = getConfig()) {
   const app = express();
   app.use(express.json({ limit: "60mb" }));
   app.use("/generated", express.static(config.generatedDir));
+  if (config.generatedDir !== config.bundledGeneratedDir) {
+    app.use("/generated", express.static(config.bundledGeneratedDir));
+  }
   app.use("/api", createRouter({ repos, aiClient, config }));
   app.use(express.static(path.resolve(__dirname, "..", "..", "dist")));
   app.use((error, req, res, next) => {
