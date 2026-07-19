@@ -10,7 +10,7 @@ import { signOAuthState, verifyOAuthState } from "./social/oauthState.js";
 import { publishCarousel } from "./social/publish.js";
 import { createZip } from "./utils/zip.js";
 
-function safeGeneratedPath(url, generatedDir = path.resolve("generated")) {
+function safeGeneratedPath(url, generatedDir) {
   if (!url?.startsWith("/generated/")) return null;
   const filename = path.basename(url);
   const filePath = path.resolve(generatedDir, filename);
@@ -68,7 +68,7 @@ export function createRouter({ repos, aiClient, config }) {
     const files = [];
     for (const slide of carousel.slides || []) {
       const image = images.get(slide.slide_number);
-      const filePath = safeGeneratedPath(image?.url);
+      const filePath = safeGeneratedPath(image?.url, config.generatedDir);
       if (!filePath || !fs.existsSync(filePath)) continue;
       const slidePng = await sharp(filePath)
         .resize(1080, 1350, { fit: "cover", background: "#fffdfa" })
@@ -100,7 +100,7 @@ export function createRouter({ repos, aiClient, config }) {
 
   router.post("/carousel/generate", requireAuth, async (req, res, next) => {
     try {
-      const result = await runCarouselPipeline({ input: req.body, user: req.user, aiClient, repos });
+      const result = await runCarouselPipeline({ input: req.body, user: req.user, aiClient, repos, generatedDir: config.generatedDir });
       res.json(result);
     } catch (error) {
       next(error);

@@ -24,7 +24,7 @@ export function createApp(config = getConfig()) {
   });
   const app = express();
   app.use(express.json({ limit: "60mb" }));
-  app.use("/generated", express.static(path.resolve("generated")));
+  app.use("/generated", express.static(config.generatedDir));
   app.use("/api", createRouter({ repos, aiClient, config }));
   app.use(express.static(path.resolve(__dirname, "..", "..", "dist")));
   app.use((error, req, res, next) => {

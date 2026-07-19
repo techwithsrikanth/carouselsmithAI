@@ -108,6 +108,8 @@ npm run build
 | `IMAGE_PROVIDER` | Primary image provider |
 | `IMAGE_FALLBACK_PROVIDER` | Optional image fallback provider |
 | `AUTH_SECRET` | JWT signing secret |
+| `DB_PATH` | Optional SQLite path. On Vercel this defaults to `/tmp/carouselsmith.sqlite` |
+| `GENERATED_DIR` | Optional generated slide directory. On Vercel this defaults to `/tmp/carouselsmith-generated` |
 | `PORT` | API port |
 | `APP_URL` | Frontend URL |
 | `API_URL` | Backend URL |
@@ -131,3 +133,4 @@ Social publishing variables are also available in `.env.example` for future Link
 - Downloaded ZIPs contain PNG slides plus caption text.
 - The app avoids mock carousel fallbacks in production paths; provider or billing failures are surfaced as real errors.
 - For time-sensitive prompts, such as events happening in the next 5 days, the pipeline asks the model to verify current dates and trusted sources before rendering.
+- Vercel deployments use serverless functions. SQLite and generated slide files are written to `/tmp`, which is not long-term persistent storage. Move production history to Turso/Supabase/Neon and slide files to S3/R2/Vercel Blob before onboarding real users.
