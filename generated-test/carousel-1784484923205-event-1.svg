@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
+  <rect width="1080" height="1350" fill="#080808"/>
+  <rect x="34" y="34" width="1012" height="1282" rx="36" fill="#0b0b0b" stroke="#24211d" stroke-width="2"/>
+  <image x="34" y="34" width="1012" height="1282" preserveAspectRatio="xMidYMid slice" href="data:image/png;base64,cG5n" opacity="1"/>
+  <rect x="34" y="34" width="1012" height="1282" rx="36" fill="#000000" opacity=".26"/>
+  <defs>
+    <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#000000" stop-opacity="0"/>
+      <stop offset=".32" stop-color="#000000" stop-opacity=".62"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.9"/>
+    </linearGradient>
+  </defs>
+  <rect x="34" y="560" width="1012" height="756" rx="36" fill="url(#fade)"/>
+  <rect x="890" y="64" width="116" height="58" rx="29" fill="#050505" opacity=".8"/>
+  <text x="948" y="102" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="800" fill="#ffffff">1/6</text>
+  <text x="78" y="580" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="850" fill="#e8e1d7">@things2doinblr</text>
+  <text x="78" y="650" text-anchor="start" font-family="Impact, Arial Black, Arial, Helvetica, sans-serif" font-size="78" font-weight="950" fill="#ffffff" letter-spacing="1">Bengaluru's Top</text>
+<text x="78" y="728" text-anchor="start" font-family="Impact, Arial Black, Arial, Helvetica, sans-serif" font-size="78" font-weight="950" fill="#ffffff" letter-spacing="1">5 Events</text>
+  <text x="82" y="846" text-anchor="start" font-family="Impact, Arial Black, Arial, Helvetica, sans-serif" font-size="30" font-weight="600" fill="#fffdfa" letter-spacing="1">Verified picks from 2026-07-19 to</text>
+<text x="82" y="885" text-anchor="start" font-family="Impact, Arial Black, Arial, Helvetica, sans-serif" font-size="30" font-weight="600" fill="#fffdfa" letter-spacing="1">2026-07-24</text>
+  <line x1="78" y1="1114" x2="1002" y2="1114" stroke="#fffdfa" stroke-width="2" opacity=".46"/>
+  <text x="78" y="1172" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="900" fill="#ffffff" letter-spacing="1">CITY</text>
+  <text x="210" y="1172" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="500" fill="#f4efe8">Bengaluru</text>
+  <text x="78" y="1222" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="900" fill="#ffffff" letter-spacing="1">DATES</text>
+  <text x="210" y="1222" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="500" fill="#f4efe8">2026-07-19 to 2026-07-24</text>
+  <text x="78" y="1272" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="900" fill="#ffffff" letter-spacing="1">SOURCES</text>
+  <text x="210" y="1272" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="500" fill="#f4efe8">District, Luma, AllEvents, official pages</text>
+  </svg>

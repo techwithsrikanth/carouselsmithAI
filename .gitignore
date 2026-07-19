@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+data/
+generated/
+generated-test/*
+!generated-test/carousel-1784484923205-event-1.svg
+!generated-test/carousel-1784484923205-event-2.svg
+!generated-test/carousel-1784484923205-event-3.svg
+coverage/
+*.log

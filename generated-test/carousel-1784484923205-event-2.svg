@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1350" viewBox="0 0 1080 1350">
+  <rect width="1080" height="1350" fill="#f6f4ef"/>
+  <rect x="34" y="34" width="1012" height="1282" rx="36" fill="#22140c"/>
+  <image x="34" y="34" width="1012" height="1282" preserveAspectRatio="xMidYMid slice" href="data:image/png;base64,cG5n" opacity="1"/>
+  <rect x="34" y="34" width="1012" height="1282" rx="36" fill="#000000" opacity=".14"/>
+  <defs>
+    <linearGradient id="fade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#000000" stop-opacity="0"/>
+      <stop offset=".32" stop-color="#000000" stop-opacity=".62"/>
+      <stop offset="1" stop-color="#000000" stop-opacity="0.93"/>
+    </linearGradient>
+  </defs>
+  <rect x="34" y="585" width="1012" height="731" rx="36" fill="url(#fade)"/>
+  <rect x="78" y="74" width="116" height="48" rx="20" fill="#d08b3e" opacity=".94"/>
+  <text x="96" y="106" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="900" fill="#ffffff">FOOD</text>
+  <rect x="884" y="74" width="106" height="54" rx="27" fill="#050505" opacity=".78"/>
+  <text x="938" y="110" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="25" font-weight="700" fill="#ffffff">2/6</text>
+  <text x="78" y="692" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="800" fill="#d8d1c8">@things2doinblr</text>
+  <text x="78" y="762" text-anchor="start" font-family="Impact, Arial Black, Arial, Helvetica, sans-serif" font-size="65" font-weight="950" fill="#ffffff" letter-spacing="1">Sushi Making</text>
+<text x="78" y="829" text-anchor="start" font-family="Impact, Arial Black, Arial, Helvetica, sans-serif" font-size="65" font-weight="950" fill="#ffffff" letter-spacing="1">Workshop</text>
+  <text x="82" y="930" text-anchor="start" font-family="Impact, Arial Black, Arial, Helvetica, sans-serif" font-size="27" font-weight="500" fill="#fffdfa" letter-spacing="1">Hands-on food experience with a</text>
+<text x="82" y="966" text-anchor="start" font-family="Impact, Arial Black, Arial, Helvetica, sans-serif" font-size="27" font-weight="500" fill="#fffdfa" letter-spacing="1">strong</text>
+  <line x1="78" y1="1114" x2="1002" y2="1114" stroke="#fffdfa" stroke-width="2" opacity=".42"/>
+  <text x="78" y="1172" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="900" fill="#ffffff" letter-spacing="1">VENUE</text>
+  <text x="210" y="1172" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="500" fill="#f4efe8">Thirdspace, Bengaluru</text>
+  <text x="78" y="1222" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="900" fill="#ffffff" letter-spacing="1">DATE</text>
+  <text x="210" y="1222" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="500" fill="#f4efe8">20 Jul - 6 PM</text>
+  <text x="78" y="1272" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="900" fill="#ffffff" letter-spacing="1">PRICE</text>
+  <text x="210" y="1272" font-family="Arial, Helvetica, sans-serif" font-size="22" font-weight="500" fill="#f4efe8">Rs 999 onwards</text>
+  <text x="88" y="1306" font-family="Arial, Helvetica, sans-serif" font-size="21" font-weight="700" fill="#d7d0c8">Source: insider.in</text>
+  </svg>
