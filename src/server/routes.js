@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import { hashPassword, issueToken, verifyPassword, authMiddleware } from "./auth.js";
-import { runCarouselPipeline } from "./ai/pipeline.js";
+import { runCarouselPipeline, runTemplateCarouselPipeline } from "./ai/pipeline.js";
 import { buildPromptImproverPrompt } from "./ai/prompts.js";
 import { linkedinAuthUrl, instagramAuthUrl } from "./social/providers.js";
 import { signOAuthState, verifyOAuthState } from "./social/oauthState.js";
@@ -104,6 +104,15 @@ export function createRouter({ repos, aiClient, config }) {
   router.post("/carousel/generate", requireAuth, async (req, res, next) => {
     try {
       const result = await runCarouselPipeline({ input: req.body, user: req.user, aiClient, repos, generatedDir: config.generatedDir });
+      res.json(result);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/carousel/template-generate", requireAuth, async (req, res, next) => {
+    try {
+      const result = await runTemplateCarouselPipeline({ input: req.body, user: req.user, aiClient, repos, generatedDir: config.generatedDir });
       res.json(result);
     } catch (error) {
       next(error);

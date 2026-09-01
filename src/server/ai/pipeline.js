@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { buildImagePrompt, buildResearchPrompt, buildSlidesPrompt, chooseDesignSystem } from "./prompts.js";
+import { buildImagePrompt, buildResearchPrompt, buildSlidesPrompt, buildTemplateTextPrompt, chooseDesignSystem } from "./prompts.js";
 import { ensureArray } from "../utils/json.js";
 import { normalizeInstagramHandle } from "../utils/handle.js";
 import { summarizePrompt } from "../utils/summary.js";
@@ -138,6 +138,18 @@ export function verifiedEventsForWindow(events = [], window = eventWindow()) {
     .map((event) => normalizeEvent(event, window))
     .filter((event) => event.name && event.source_url && overlapsWindow(event, window))
     .slice(0, 8);
+}
+
+function researchArtifact(researchResponse, events = []) {
+  const groundedRefs = sourceRefs(researchResponse.groundingMetadata);
+  return {
+    key_insights: ensureArray(researchResponse.json.key_insights),
+    statistics: ensureArray(researchResponse.json.statistics),
+    events,
+    trends: ensureArray(researchResponse.json.trends),
+    quotes: ensureArray(researchResponse.json.quotes),
+    references: mergeReferences([...ensureArray(researchResponse.json.references), ...eventReferences(events)], groundedRefs)
+  };
 }
 
 function requestedTopCount(prompt = "", fallback = 5) {
@@ -287,16 +299,8 @@ export async function runCarouselPipeline({ input, user, aiClient, repos, genera
   const eventMode = isEventCarousel(input.prompt);
   const currentEventWindow = eventWindow(input.prompt);
   const researchResponse = await aiClient.generateJson(buildResearchPrompt(input), { grounded: true });
-  const groundedRefs = sourceRefs(researchResponse.groundingMetadata);
   const events = verifiedEventsForWindow(researchResponse.json.events, currentEventWindow);
-  const research = {
-    key_insights: ensureArray(researchResponse.json.key_insights),
-    statistics: ensureArray(researchResponse.json.statistics),
-    events,
-    trends: ensureArray(researchResponse.json.trends),
-    quotes: ensureArray(researchResponse.json.quotes),
-    references: mergeReferences([...ensureArray(researchResponse.json.references), ...eventReferences(events)], groundedRefs)
-  };
+  const research = researchArtifact(researchResponse, events);
 
   const styleAnalysis = templateMode
     ? {
@@ -441,6 +445,110 @@ Do not copy logos, private marks, personal likenesses, or exact source text. Do 
     image_recommendations: slides.flatMap((slide) => slide.image_search_queries),
     caption: planResponse.json.caption || "",
     hashtags: ensureArray(planResponse.json.hashtags),
+    fact_check: verifyClaims(research.statistics, research.references),
+    images_generated: images
+  };
+  const carousel = repos.carousels.createWithSlides({
+    userId: user.id,
+    prompt: input.prompt,
+    promptSummary: summarizePrompt(input.prompt),
+    slides,
+    images,
+    artifact
+  });
+  return {
+    carousel_id: carousel.id,
+    ...artifact
+  };
+}
+
+export async function runTemplateCarouselPipeline({ input, user, aiClient, repos, generatedDir = path.resolve("generated") }) {
+  if (!aiClient?.configured) {
+    const error = new Error("GEMINI_API_KEY is not configured. Add it to .env to run real research and generation.");
+    error.status = 503;
+    throw error;
+  }
+
+  const totalSlides = Math.min(12, Math.max(4, Number(input.totalSlides || 6)));
+  const handle = normalizeInstagramHandle(input.instagramHandle || "");
+  const template = normalizeTemplate(input.template);
+  if (!template) {
+    const error = new Error("Select a template before generating.");
+    error.status = 400;
+    throw error;
+  }
+
+  const researchResponse = await aiClient.generateJson(buildResearchPrompt(input), { grounded: true });
+  const research = researchArtifact(researchResponse, []);
+  const textResponse = await aiClient.generateJson(buildTemplateTextPrompt({
+    prompt: input.prompt,
+    sourceText: input.sourceText || "",
+    research,
+    template,
+    totalSlides
+  }));
+
+  const slides = ensureArray(textResponse.json.slides).slice(0, totalSlides).map((slide, index) => ({
+    slide_number: index + 1,
+    title: String(slide.title || `Key Idea ${index + 1}`).split(/\s+/).slice(0, 8).join(" "),
+    body: String(slide.body || "Add one clear supporting thought.").replace(/\s+/g, " ").trim(),
+    visual_direction: "locked social text post template",
+    image_search_queries: [],
+    design_notes: "Template Studio: only title and body text changed. Template chrome is rendered by code.",
+    event_details: null
+  }));
+  while (slides.length < totalSlides) {
+    slides.push({
+      slide_number: slides.length + 1,
+      title: "One Clear Takeaway",
+      body: "Use this slide to make the idea easier to remember.",
+      visual_direction: "locked social text post template",
+      image_search_queries: [],
+      design_notes: "Template Studio fallback text slot.",
+      event_details: null
+    });
+  }
+
+  fs.mkdirSync(generatedDir, { recursive: true });
+  const batchId = Date.now();
+  const images = slides.map((slide) => renderSocialPostSlide({
+    slide,
+    handle,
+    totalSlides,
+    generatedDir,
+    batchId,
+    template
+  }));
+
+  const style = {
+    reference_format: "locked_template",
+    design_brief: "Template Studio locked social-post layout. Only slide text changes.",
+    color_palette: [template.backgroundColor, template.textColor, template.mutedColor, template.badgeColor],
+    image_policy: "No generated images, charts, icons, diagrams, or body graphics.",
+    consistency_rules: [
+      "Renderer owns all layout and chrome.",
+      "Same profile photo, profile name, timestamp, menu dots, badge, colors, and slide counter on every slide.",
+      "Only title and body text change."
+    ]
+  };
+  const artifact = {
+    generation_input: {
+      prompt: input.prompt,
+      instagramHandle: input.instagramHandle || "",
+      sourceText: input.sourceText || "",
+      totalSlides,
+      template: { ...template, avatarUpload: template.avatarUpload ? { name: template.avatarUpload.name, mimeType: template.avatarUpload.mimeType } : null }
+    },
+    research_summary: research.key_insights,
+    sources_used: research.references,
+    events_used: [],
+    style_analysis: style,
+    brand_analysis: { handle, template: template.name },
+    content_plan: { mode: "Template Studio", rule: "AI generated text only; code rendered the fixed template." },
+    slides,
+    image_recommendations: [],
+    caption: textResponse.json.caption || "",
+    hashtags: ensureArray(textResponse.json.hashtags),
     fact_check: verifyClaims(research.statistics, research.references),
     images_generated: images
   };

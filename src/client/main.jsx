@@ -501,7 +501,7 @@ function TemplateStudio({ onResult, onLoading }) {
     setError("");
     onLoading(true);
     try {
-      const result = await api.request("/carousel/generate", {
+      const result = await api.request("/carousel/template-generate", {
         method: "POST",
         body: JSON.stringify({
           prompt,

@@ -108,6 +108,41 @@ Rules:
 - Keep it concise: 80-180 words.`;
 }
 
+export function buildTemplateTextPrompt({ prompt, sourceText, research, template, totalSlides }) {
+  return `Write ONLY the text that will be inserted into a locked social-post carousel template.
+
+Topic or URL:
+${prompt}
+
+Optional source text:
+${sourceText || "none"}
+
+Research:
+${JSON.stringify(research).slice(0, 12000)}
+
+Template:
+${JSON.stringify({ id: template.id, name: template.name, profileName: template.profileName })}
+
+Return strict JSON only:
+{
+  "slides": [
+    { "slide_number": 1, "title": "3-8 words", "body": "1-2 short sentences" }
+  ],
+  "caption": "short publish-ready caption",
+  "hashtags": ["#tag"]
+}
+
+Hard rules:
+- Do not design the carousel.
+- Do not mention or request images, charts, icons, diagrams, graphs, UI elements, colors, backgrounds, avatars, or layouts.
+- Do not output visual_direction, image_search_queries, design_notes, or formatting instructions.
+- The app already has a fixed template shell. Only title and body change from slide to slide.
+- Write like a text-only creator post split across ${totalSlides} slides: hook, context, insight, proof, implication, takeaway.
+- Keep every title readable inside a social post. Avoid generic headings like "Unicorn Density", "Key Stats", "Overview", or "Conclusion".
+- Do not hallucinate dates, numbers, names, or claims. If a claim is uncertain, phrase it as an interpretation, not a fact.
+- Need exactly ${totalSlides} slides.`;
+}
+
 export function buildSlidesPrompt({ prompt, research, brand, style, totalSlides, template }) {
   const templateRules = template
     ? `
