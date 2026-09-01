@@ -355,14 +355,14 @@ Do not copy logos, private marks, personal likenesses, or exact source text. Do 
     : { handle, note: "No Instagram handle supplied; private/logged-in data is not accessible." };
 
   const planResponse = await aiClient.generateJson(
-    buildSlidesPrompt({ prompt: input.prompt, research, brand: brandAnalysis, style, totalSlides })
+    buildSlidesPrompt({ prompt: input.prompt, research, brand: brandAnalysis, style, totalSlides, template })
   );
   const plannedSlides = ensureArray(planResponse.json.slides).slice(0, totalSlides).map((slide, index) => ({
     slide_number: index + 1,
-    title: String(slide.title || `Key Idea ${index + 1}`).split(/\s+/).slice(0, 6).join(" "),
+    title: String(slide.title || `Key Idea ${index + 1}`).split(/\s+/).slice(0, templateMode ? 8 : 6).join(" "),
     body: String(slide.body || "Verification Required."),
-    visual_direction: slide.visual_direction || "editorial diagram",
-    image_search_queries: ensureArray(slide.image_search_queries),
+    visual_direction: templateMode ? "locked social text post template" : slide.visual_direction || "editorial diagram",
+    image_search_queries: templateMode ? [] : ensureArray(slide.image_search_queries),
     design_notes: slide.design_notes || "",
     event_details: slide.event_details || null
   }));

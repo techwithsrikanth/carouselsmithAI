@@ -449,6 +449,7 @@ function TemplateStudio({ onResult, onLoading }) {
   const [avatarUpload, setAvatarUpload] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState("");
   const [error, setError] = useState("");
+  const [improvingPrompt, setImprovingPrompt] = useState(false);
 
   useEffect(() => {
     setBackgroundColor(selectedTemplate.backgroundColor);
@@ -472,6 +473,27 @@ function TemplateStudio({ onResult, onLoading }) {
     const upload = await readFileAsStyleUpload(file);
     setAvatarUpload(upload);
     setAvatarPreview(`data:${upload.mimeType};base64,${upload.data}`);
+  }
+
+  async function improvePrompt() {
+    setError("");
+    setImprovingPrompt(true);
+    try {
+      const data = await api.request("/prompt/improve", {
+        method: "POST",
+        body: JSON.stringify({
+          prompt: `${prompt}\n\nUse the ${selectedTemplate.name} locked text-post template. Make it story-driven, text-only, and consistent across ${totalSlides} slides. Do not ask for charts, icons, diagrams, or body images.`,
+          instagramHandle: handle,
+          sourceText,
+          totalSlides
+        })
+      });
+      setPrompt(data.improved_prompt);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setImprovingPrompt(false);
+    }
   }
 
   async function generate(event) {
@@ -527,7 +549,15 @@ function TemplateStudio({ onResult, onLoading }) {
           </button>
         ))}
       </div>
-      <label>Prompt, URL, or idea<textarea value={prompt} rows="4" onChange={(event) => setPrompt(event.target.value)} /></label>
+      <label>
+        <span className="label-row">
+          Prompt, URL, or idea
+          <button className="linkish" type="button" disabled={improvingPrompt || !prompt.trim()} onClick={improvePrompt}>
+            {improvingPrompt ? "Improvising..." : "Improvise prompt"}
+          </button>
+        </span>
+        <textarea value={prompt} rows="4" onChange={(event) => setPrompt(event.target.value)} />
+      </label>
       <label>Optional source text<textarea value={sourceText} rows="3" onChange={(event) => setSourceText(event.target.value)} /></label>
       <div className="form-pair">
         <label>Profile name<input value={profileName} onChange={(event) => setProfileName(event.target.value)} /></label>

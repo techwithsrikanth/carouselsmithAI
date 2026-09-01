@@ -108,14 +108,27 @@ Rules:
 - Keep it concise: 80-180 words.`;
 }
 
-export function buildSlidesPrompt({ prompt, research, brand, style, totalSlides }) {
+export function buildSlidesPrompt({ prompt, research, brand, style, totalSlides, template }) {
+  const templateRules = template
+    ? `
+Template Studio mode is ON.
+Selected template: ${JSON.stringify({ id: template.id, name: template.name, profileName: template.profileName })}
+This is a Canva-like locked social text-post template. The renderer will draw the profile photo, profile name, timestamp, menu dots, badge, colors, and slide counter.
+Your job is ONLY to write strong text content for each slide.
+Do not plan charts, icons, diagrams, tiny graphics, image panels, UI mockups, statistics illustrations, or decorative visual elements.
+Every visual_direction must be exactly "locked social text post template".
+Write the carousel like a smart founder/creator post split across slides: clear hook, narrative progression, concrete insight, and payoff.
+Slide titles can be 3-8 words. Body should be 1-2 short readable sentences. Avoid generic titles like "Key Stats", "Unicorn Density", or "The Future" unless the user specifically asks for a stats carousel.
+`
+    : "";
   return `Create a research-grounded Instagram carousel plan as strict JSON. Topic: ${prompt}
 Research summary: ${JSON.stringify(research).slice(0, 12000)}
 Brand: ${JSON.stringify(brand)}
 Style: ${JSON.stringify(style)}
-Need ${totalSlides} slides. Each slide title must be 3-6 words. Each body is one short sentence.
+${templateRules}
+Need ${totalSlides} slides. ${template ? "Follow the Template Studio title/body rules above." : "Each slide title must be 3-6 words. Each body is one short sentence."}
 If the topic asks for top events and ${totalSlides} slides, make slide 1 a starter/cover slide explaining the carousel theme, then use the remaining slides for one verified event per slide across varied categories. Copy event date, time, venue, price, booking_url, and source_url exactly from Research events; never invent or substitute older events.
-Make the visual directions consistent with the style. If the style is a social_post_screenshot or tweet_like_text_post, the visual direction must be "text-only social post layout" for every slide.
+Make the visual directions consistent with the style. ${template ? "Because Template Studio mode is ON, visual_direction must stay locked to the template instructions above." : "If the style is a social_post_screenshot or tweet_like_text_post, the visual direction must be \"text-only social post layout\" for every slide."}
 If the user requested a realistic collage starter page, allow slide 1 to be a clean realistic collage based on sourced event/venue visual themes. For all other slides, use one realistic event-relevant image treatment at most and keep the template consistent.
 Prefer typography-led slides with minimal diagrams or small accents; do not ask for many photos, busy illustrations, portraits, avatars, screenshots, or unrelated images unless the user's uploaded reference clearly uses photographic event imagery.
 Return slides, caption, hashtags, content_plan.`;
