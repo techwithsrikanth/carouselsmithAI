@@ -51,6 +51,29 @@ export function normalizeStyleUploads(styleUploads = []) {
     .filter((upload) => allowedStyleMimeTypes.has(upload.mimeType) && upload.data.length > 0);
 }
 
+function colorOr(value, fallback) {
+  return /^#[0-9a-f]{6}$/i.test(String(value || "")) ? value : fallback;
+}
+
+export function normalizeTemplate(template = {}) {
+  const avatarUpload = normalizeStyleUploads(template.avatarUpload ? [template.avatarUpload] : [])
+    .filter((upload) => upload.mimeType.startsWith("image/"))[0] || null;
+  const id = String(template.id || "").trim();
+  if (!id) return null;
+  return {
+    id,
+    name: String(template.name || "Social proof post").slice(0, 80),
+    profileName: String(template.profileName || "").trim().slice(0, 42),
+    timestamp: String(template.timestamp || "Just now").trim().slice(0, 24) || "Just now",
+    backgroundColor: colorOr(template.backgroundColor, "#ffffff"),
+    textColor: colorOr(template.textColor, "#111111"),
+    mutedColor: colorOr(template.mutedColor, "#737373"),
+    borderColor: colorOr(template.borderColor, "#dedbd4"),
+    badgeColor: colorOr(template.badgeColor, "#2374d5"),
+    avatarUpload
+  };
+}
+
 export function verifyClaims(statistics = [], references = []) {
   const urls = new Set(references.map((ref) => ref.source_url));
   return statistics.map((stat) => ({
@@ -257,6 +280,8 @@ export async function runCarouselPipeline({ input, user, aiClient, repos, genera
   const totalSlides = Math.min(12, Math.max(4, Number(input.totalSlides || 7)));
   const handle = normalizeInstagramHandle(input.instagramHandle || "");
   const styleUploads = normalizeStyleUploads(input.styleUploads);
+  const template = normalizeTemplate(input.template);
+  const templateMode = Boolean(template);
   const eventMode = isEventCarousel(input.prompt);
   const currentEventWindow = eventWindow(input.prompt);
   const researchResponse = await aiClient.generateJson(buildResearchPrompt(input), { grounded: true });
@@ -271,7 +296,21 @@ export async function runCarouselPipeline({ input, user, aiClient, repos, genera
     references: mergeReferences([...ensureArray(researchResponse.json.references), ...eventReferences(events)], groundedRefs)
   };
 
-  const styleAnalysis = styleUploads.length
+  const styleAnalysis = templateMode
+    ? {
+        json: {
+          reference_format: "social_post_screenshot",
+          design_brief: "A locked social text-post carousel template with consistent profile chrome, large readable text, and no changing imagery between slides.",
+          color_palette: [template.backgroundColor, template.textColor, template.mutedColor, template.badgeColor],
+          image_policy: "Use only the fixed profile avatar supplied by the user. Do not generate body photos.",
+          consistency_rules: [
+            "Keep the same profile name, avatar, timestamp, verification badge, menu dots, colors, and slide counter on every slide.",
+            "Only slide title and body text may change.",
+            "Do not copy identity details from reference screenshots unless typed by the user."
+          ]
+        }
+      }
+    : styleUploads.length
     ? await aiClient.generateJson(
         `Analyze the attached carousel screenshots/PDF pages as visual style references for a new carousel.
 Return strict JSON with:
@@ -325,7 +364,7 @@ Do not copy logos, private marks, personal likenesses, or exact source text. Do 
     design_notes: slide.design_notes || "",
     event_details: slide.event_details || null
   }));
-  const slides = eventMode
+  const slides = eventMode && !templateMode
     ? buildEventSlides({ events: research.events, totalSlides, handle, window: currentEventWindow, topCount: requestedTopCount(input.prompt) })
     : plannedSlides;
 
@@ -334,7 +373,7 @@ Do not copy logos, private marks, personal likenesses, or exact source text. Do 
   let quotaHalt = false;
   const deterministicBatchId = Date.now();
   for (const slide of slides) {
-    if (eventMode) {
+    if (eventMode && !templateMode) {
       let background = null;
       let imagePrompt = buildEventBackgroundPrompt(slide, slides.length);
       if (slide.slide_number === 1 || slide.event_details?.source_url || slide.event_details?.cta) {
@@ -350,8 +389,8 @@ Do not copy logos, private marks, personal likenesses, or exact source text. Do 
       images.push(renderEventPosterSlide({ slide, handle, totalSlides: slides.length, generatedDir, batchId: deterministicBatchId, backgroundImage: background, imagePrompt }));
       continue;
     }
-    if (isSocialPostDesign(style)) {
-      images.push(renderSocialPostSlide({ slide, handle, totalSlides: slides.length, generatedDir, batchId: deterministicBatchId }));
+    if (templateMode || isSocialPostDesign(style)) {
+      images.push(renderSocialPostSlide({ slide, handle, totalSlides: slides.length, generatedDir, batchId: deterministicBatchId, template: template || {} }));
       continue;
     }
     if (quotaHalt) {
@@ -379,7 +418,8 @@ Do not copy logos, private marks, personal likenesses, or exact source text. Do 
       prompt: input.prompt,
       instagramHandle: input.instagramHandle || "",
       sourceText: input.sourceText || "",
-      totalSlides
+      totalSlides,
+      template: template ? { ...template, avatarUpload: template.avatarUpload ? { name: template.avatarUpload.name, mimeType: template.avatarUpload.mimeType } : null } : null
     },
     research_summary: research.key_insights,
     sources_used: research.references,

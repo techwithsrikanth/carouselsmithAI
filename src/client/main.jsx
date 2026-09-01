@@ -77,6 +77,36 @@ const defaultComposerInput = {
   totalSlides: 7
 };
 
+const carouselTemplates = [
+  {
+    id: "social-proof-post",
+    name: "Social Proof Post",
+    description: "Clean tweet-style narrative with fixed profile chrome.",
+    backgroundColor: "#ffffff",
+    textColor: "#111111",
+    mutedColor: "#737373",
+    badgeColor: "#2374d5"
+  },
+  {
+    id: "warm-founder-note",
+    name: "Founder Note",
+    description: "Softer editorial text post for personal brand pages.",
+    backgroundColor: "#fff8ef",
+    textColor: "#171717",
+    mutedColor: "#7b7064",
+    badgeColor: "#c94f3b"
+  },
+  {
+    id: "dark-insight-card",
+    name: "Dark Insight",
+    description: "High-contrast text carousel for sharp opinions.",
+    backgroundColor: "#111111",
+    textColor: "#fffdfa",
+    mutedColor: "#b8b2a8",
+    badgeColor: "#1d6f5f"
+  }
+];
+
 function Landing() {
   return (
     <main className="landing">
@@ -376,6 +406,136 @@ function Composer({ draftInput, onResult, onLoading }) {
   );
 }
 
+function TemplateStudio({ onResult, onLoading }) {
+  const [selectedTemplateId, setSelectedTemplateId] = useState(carouselTemplates[0].id);
+  const selectedTemplate = carouselTemplates.find((template) => template.id === selectedTemplateId) || carouselTemplates[0];
+  const [prompt, setPrompt] = useState("Turn this article into a personal-brand carousel about India's most impactful entrepreneurs");
+  const [handle, setHandle] = useState("@srikanth");
+  const [profileName, setProfileName] = useState("Srikanth");
+  const [sourceText, setSourceText] = useState("");
+  const [totalSlides, setTotalSlides] = useState(6);
+  const [backgroundColor, setBackgroundColor] = useState(selectedTemplate.backgroundColor);
+  const [textColor, setTextColor] = useState(selectedTemplate.textColor);
+  const [mutedColor, setMutedColor] = useState(selectedTemplate.mutedColor);
+  const [badgeColor, setBadgeColor] = useState(selectedTemplate.badgeColor);
+  const [avatarUpload, setAvatarUpload] = useState(null);
+  const [avatarPreview, setAvatarPreview] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    setBackgroundColor(selectedTemplate.backgroundColor);
+    setTextColor(selectedTemplate.textColor);
+    setMutedColor(selectedTemplate.mutedColor);
+    setBadgeColor(selectedTemplate.badgeColor);
+  }, [selectedTemplate]);
+
+  async function addAvatar(fileList) {
+    setError("");
+    const file = [...fileList][0];
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setError("Upload a PNG, JPG, or WebP profile photo.");
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      setError("Profile photo must be under 4 MB.");
+      return;
+    }
+    const upload = await readFileAsStyleUpload(file);
+    setAvatarUpload(upload);
+    setAvatarPreview(`data:${upload.mimeType};base64,${upload.data}`);
+  }
+
+  async function generate(event) {
+    event.preventDefault();
+    setError("");
+    onLoading(true);
+    try {
+      const result = await api.request("/carousel/generate", {
+        method: "POST",
+        body: JSON.stringify({
+          prompt,
+          instagramHandle: handle,
+          sourceText,
+          totalSlides,
+          template: {
+            id: selectedTemplate.id,
+            name: selectedTemplate.name,
+            profileName,
+            timestamp: "Just now",
+            backgroundColor,
+            textColor,
+            mutedColor,
+            badgeColor,
+            avatarUpload
+          }
+        })
+      });
+      onResult(result);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      onLoading(false);
+    }
+  }
+
+  return (
+    <form className="composer template-studio" onSubmit={generate}>
+      <div className="section-head">
+        <span>Template Studio</span>
+        <strong>{selectedTemplate.name}</strong>
+      </div>
+      <div className="template-picker">
+        {carouselTemplates.map((template) => (
+          <button
+            type="button"
+            key={template.id}
+            className={template.id === selectedTemplateId ? "active" : ""}
+            onClick={() => setSelectedTemplateId(template.id)}
+          >
+            <span style={{ background: template.backgroundColor, color: template.textColor, borderColor: template.mutedColor }}>Aa</span>
+            <strong>{template.name}</strong>
+            <small>{template.description}</small>
+          </button>
+        ))}
+      </div>
+      <label>Prompt, URL, or idea<textarea value={prompt} rows="4" onChange={(event) => setPrompt(event.target.value)} /></label>
+      <label>Optional source text<textarea value={sourceText} rows="3" onChange={(event) => setSourceText(event.target.value)} /></label>
+      <div className="form-pair">
+        <label>Profile name<input value={profileName} onChange={(event) => setProfileName(event.target.value)} /></label>
+        <label>Handle<input value={handle} onChange={(event) => setHandle(event.target.value)} /></label>
+      </div>
+      <div className="form-pair">
+        <label>Slides<input type="number" min="4" max="12" value={totalSlides} onChange={(event) => setTotalSlides(event.target.value)} /></label>
+        <label className="avatar-upload">
+          Photo
+          <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => addAvatar(event.target.files)} />
+          <span>{avatarPreview ? <img src={avatarPreview} alt="" /> : "Upload"}</span>
+        </label>
+      </div>
+      <div className="color-grid">
+        <label>Background<input type="color" value={backgroundColor} onChange={(event) => setBackgroundColor(event.target.value)} /></label>
+        <label>Text<input type="color" value={textColor} onChange={(event) => setTextColor(event.target.value)} /></label>
+        <label>Muted<input type="color" value={mutedColor} onChange={(event) => setMutedColor(event.target.value)} /></label>
+        <label>Badge<input type="color" value={badgeColor} onChange={(event) => setBadgeColor(event.target.value)} /></label>
+      </div>
+      <div className="template-preview" style={{ background: backgroundColor, color: textColor, borderColor: mutedColor }}>
+        <div>
+          {avatarPreview ? <img src={avatarPreview} alt="" /> : <span />}
+          <strong>{profileName || "Profile Name"}</strong>
+          <small style={{ color: mutedColor }}>Just now ·</small>
+          <em style={{ background: badgeColor }}>✓</em>
+        </div>
+        <b>If you asked me what changed, I would start here.</b>
+        <p style={{ color: textColor }}>AI writes the carousel. Your template keeps every slide consistent.</p>
+        <small style={{ color: textColor }}>1/{totalSlides}</small>
+      </div>
+      {error && <p className="error">{error}</p>}
+      <button className="button primary">Generate with template</button>
+    </form>
+  );
+}
+
 function PublishPanel({ result }) {
   const [platforms, setPlatforms] = useState(["linkedin"]);
   const [message, setMessage] = useState("");
@@ -451,6 +611,7 @@ function Dashboard() {
   const [history, setHistory] = useState([]);
   const [activeHistoryId, setActiveHistoryId] = useState(null);
   const [draftInput, setDraftInput] = useState(defaultComposerInput);
+  const [workspaceMode, setWorkspaceMode] = useState("generator");
 
   useEffect(() => {
     if (!authed) return;
@@ -464,6 +625,7 @@ function Dashboard() {
       setResult(data.carousel);
       setActiveHistoryId(item.id);
       setDraftInput(data.carousel.generation_input || { ...defaultComposerInput, prompt: data.carousel.prompt, totalSlides: data.carousel.slides?.length || 7 });
+      setWorkspaceMode(data.carousel.generation_input?.template ? "templates" : "generator");
     } finally {
       setLoading(false);
     }
@@ -473,6 +635,7 @@ function Dashboard() {
     setResult(null);
     setActiveHistoryId(null);
     setDraftInput({ ...defaultComposerInput });
+    setWorkspaceMode("generator");
   }
 
   async function deleteHistoryItem(event, item) {
@@ -524,10 +687,18 @@ function Dashboard() {
             <Link to="/"><Logo /></Link>
             <span>Research, design, publish</span>
           </div>
-          <button className="button ghost" onClick={() => { localStorage.removeItem("token"); setAuthed(false); }}>Sign out</button>
+          <div className="header-actions">
+            <div className="mode-switch" aria-label="Workspace mode">
+              <button className={workspaceMode === "generator" ? "active" : ""} onClick={() => setWorkspaceMode("generator")}>AI Generator</button>
+              <button className={workspaceMode === "templates" ? "active" : ""} onClick={() => setWorkspaceMode("templates")}>Template Studio</button>
+            </div>
+            <button className="button ghost" onClick={() => { localStorage.removeItem("token"); setAuthed(false); }}>Sign out</button>
+          </div>
         </header>
         <div className="grid">
-          <Composer draftInput={draftInput} onResult={setResult} onLoading={setLoading} />
+          {workspaceMode === "templates"
+            ? <TemplateStudio onResult={setResult} onLoading={setLoading} />
+            : <Composer draftInput={draftInput} onResult={setResult} onLoading={setLoading} />}
           <SlideDeck result={result} loading={loading} />
           <Insights result={result} />
           <PublishPanel result={result} />
