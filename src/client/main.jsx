@@ -280,6 +280,8 @@ function Composer({ draftInput, onResult, onLoading }) {
   const [sourceText, setSourceText] = useState(defaultComposerInput.sourceText);
   const [totalSlides, setTotalSlides] = useState(defaultComposerInput.totalSlides);
   const [styleUploads, setStyleUploads] = useState([]);
+  const [profilePhotoUpload, setProfilePhotoUpload] = useState(null);
+  const [profilePhotoPreview, setProfilePhotoPreview] = useState("");
   const [error, setError] = useState("");
   const [improvingPrompt, setImprovingPrompt] = useState(false);
   const promptExamples = [
@@ -296,6 +298,8 @@ function Composer({ draftInput, onResult, onLoading }) {
     setSourceText(next.sourceText || "");
     setTotalSlides(next.totalSlides || defaultComposerInput.totalSlides);
     setStyleUploads([]);
+    setProfilePhotoUpload(null);
+    setProfilePhotoPreview("");
     setError("");
   }, [draftInput]);
 
@@ -315,6 +319,23 @@ function Composer({ draftInput, onResult, onLoading }) {
     setStyleUploads((current) => [...current, ...nextUploads].slice(0, 8));
   }
 
+  async function addProfilePhoto(fileList) {
+    setError("");
+    const file = [...fileList][0];
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setError("Upload a PNG, JPG, or WebP profile photo.");
+      return;
+    }
+    if (file.size > 4 * 1024 * 1024) {
+      setError("Profile photo must be under 4 MB.");
+      return;
+    }
+    const upload = await readFileAsStyleUpload(file);
+    setProfilePhotoUpload(upload);
+    setProfilePhotoPreview(`data:${upload.mimeType};base64,${upload.data}`);
+  }
+
   async function generate(event) {
     event.preventDefault();
     setError("");
@@ -322,7 +343,7 @@ function Composer({ draftInput, onResult, onLoading }) {
     try {
       const result = await api.request("/carousel/generate", {
         method: "POST",
-        body: JSON.stringify({ prompt, instagramHandle: handle, sourceText, totalSlides, styleUploads })
+        body: JSON.stringify({ prompt, instagramHandle: handle, sourceText, totalSlides, styleUploads, profilePhotoUpload })
       });
       onResult(result);
     } catch (err) {
@@ -370,7 +391,14 @@ function Composer({ draftInput, onResult, onLoading }) {
           </button>
         ))}
       </div>
-      <label>Instagram handle<input value={handle} onChange={(event) => setHandle(event.target.value)} /></label>
+      <div className="form-pair">
+        <label>Instagram handle<input value={handle} onChange={(event) => setHandle(event.target.value)} /></label>
+        <label className="avatar-upload">
+          Profile photo
+          <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => addProfilePhoto(event.target.files)} />
+          <span>{profilePhotoPreview ? <img src={profilePhotoPreview} alt="" /> : "Upload"}</span>
+        </label>
+      </div>
       <label>Optional source text<textarea value={sourceText} rows="4" onChange={(event) => setSourceText(event.target.value)} /></label>
       <label>Slides<input type="number" min="4" max="12" value={totalSlides} onChange={(event) => setTotalSlides(event.target.value)} /></label>
       <label

@@ -280,6 +280,8 @@ export async function runCarouselPipeline({ input, user, aiClient, repos, genera
   const totalSlides = Math.min(12, Math.max(4, Number(input.totalSlides || 7)));
   const handle = normalizeInstagramHandle(input.instagramHandle || "");
   const styleUploads = normalizeStyleUploads(input.styleUploads);
+  const profilePhotoUpload = normalizeStyleUploads(input.profilePhotoUpload ? [input.profilePhotoUpload] : [])
+    .filter((upload) => upload.mimeType.startsWith("image/"))[0] || null;
   const template = normalizeTemplate(input.template);
   const templateMode = Boolean(template);
   const eventMode = isEventCarousel(input.prompt);
@@ -390,7 +392,14 @@ Do not copy logos, private marks, personal likenesses, or exact source text. Do 
       continue;
     }
     if (templateMode || isSocialPostDesign(style)) {
-      images.push(renderSocialPostSlide({ slide, handle, totalSlides: slides.length, generatedDir, batchId: deterministicBatchId, template: template || {} }));
+      images.push(renderSocialPostSlide({
+        slide,
+        handle,
+        totalSlides: slides.length,
+        generatedDir,
+        batchId: deterministicBatchId,
+        template: template || { avatarUpload: profilePhotoUpload }
+      }));
       continue;
     }
     if (quotaHalt) {
@@ -419,6 +428,7 @@ Do not copy logos, private marks, personal likenesses, or exact source text. Do 
       instagramHandle: input.instagramHandle || "",
       sourceText: input.sourceText || "",
       totalSlides,
+      profilePhotoUpload: profilePhotoUpload ? { name: profilePhotoUpload.name, mimeType: profilePhotoUpload.mimeType } : null,
       template: template ? { ...template, avatarUpload: template.avatarUpload ? { name: template.avatarUpload.name, mimeType: template.avatarUpload.mimeType } : null } : null
     },
     research_summary: research.key_insights,
