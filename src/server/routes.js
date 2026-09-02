@@ -3,6 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 import sharp from "sharp";
 import { hashPassword, issueToken, verifyPassword, authMiddleware } from "./auth.js";
+import { createOtpService, OTP_PURPOSE } from "./auth/otp.js";
+import { normalizeEmail, validatePassword, validateSignupEmail } from "./auth/email.js";
 import { runCarouselPipeline, runTemplateCarouselPipeline } from "./ai/pipeline.js";
 import { buildPromptImproverPrompt } from "./ai/prompts.js";
 import { linkedinAuthUrl, instagramAuthUrl } from "./social/providers.js";
@@ -29,42 +31,132 @@ function downloadName(summary, id) {
     .slice(0, 48) || `carousel-${id}`;
 }
 
-export function createRouter({ repos, aiClient, config }) {
+export function createRouter({ repos, aiClient, config, mailer }) {
   const router = express.Router();
+  const otpService = createOtpService({ repos, secret: config.authSecret });
 
+  const publicUser = (user) => ({
+    id: user.id,
+    email: user.email,
+    current_tier: user.current_tier,
+    email_verified: Boolean(user.email_verified)
+  });
+
+  // Sends a code and reports delivery honestly. When SMTP is not configured the code is
+  // logged to the server console instead, and the response says so rather than implying an
+  // email is on its way.
+  async function sendSignupCode(email) {
+    const { code, expiresAtMs } = await otpService.issue({ email, purpose: OTP_PURPOSE.SIGNUP });
+    const delivery = await mailer.sendOtp({ to: email, code, ttlMs: otpService.policy.ttlMs });
+    return { expiresAtMs, delivered: delivery.delivered, transport: delivery.transport };
+  }
+
+  /**
+   * Signup does not create a session. It records an unverified account and emails a code;
+   * the account stays unusable until /auth/verify-email succeeds, so an address nobody can
+   * read never becomes a working account.
+   */
   router.post("/auth/signup", async (req, res, next) => {
     try {
-      const email = String(req.body.email || "").toLowerCase().trim();
-      const password = String(req.body.password || "");
-      if (!email || password.length < 8) return res.status(400).json({ error: "Email and an 8+ character password are required." });
-      const user = repos.users.create({ email, passwordHash: await hashPassword(password) });
-      res.json({ user: { id: user.id, email: user.email, current_tier: user.current_tier }, token: issueToken(user, config.authSecret) });
+      const emailCheck = validateSignupEmail(req.body.email);
+      if (!emailCheck.ok) return res.status(400).json({ error: emailCheck.reason });
+      const passwordCheck = validatePassword(req.body.password);
+      if (!passwordCheck.ok) return res.status(400).json({ error: passwordCheck.reason });
+      const email = emailCheck.email;
+
+      const existing = await repos.users.findByEmail(email);
+      if (existing?.email_verified) return res.status(409).json({ error: "That email already has an account. Sign in instead." });
+
+      const passwordHash = await hashPassword(passwordCheck.password);
+      if (existing) {
+        // Unverified account: let the same address retry signup rather than dead-ending.
+        await repos.users.replacePassword(existing.id, passwordHash);
+      } else {
+        await repos.users.create({ email, passwordHash });
+      }
+
+      const sent = await sendSignupCode(email);
+      res.json({ status: "verification_required", email, ...sent });
     } catch (error) {
-      if (String(error.message).includes("UNIQUE")) return res.status(409).json({ error: "Email already exists." });
+      if (String(error.message).includes("UNIQUE")) return res.status(409).json({ error: "That email already has an account. Sign in instead." });
       next(error);
     }
   });
 
-  router.post("/auth/signin", async (req, res) => {
-    const email = String(req.body.email || "").toLowerCase().trim();
-    const user = repos.users.findByEmail(email);
-    if (!user || !(await verifyPassword(String(req.body.password || ""), user.password_hash))) {
-      return res.status(401).json({ error: "Invalid email or password." });
+  router.post("/auth/verify-email", async (req, res, next) => {
+    try {
+      const email = normalizeEmail(req.body.email);
+      const user = await repos.users.findByEmail(email);
+      if (!user) return res.status(404).json({ error: "No pending signup for that email." });
+      if (user.email_verified) return res.status(409).json({ error: "That email is already verified. Sign in instead." });
+
+      const result = await otpService.verify({ email, purpose: OTP_PURPOSE.SIGNUP, code: req.body.code });
+      if (!result.ok) return res.status(400).json({ error: result.reason });
+
+      const verified = await repos.users.markVerified(user.id);
+      res.json({ user: publicUser(verified), token: issueToken(verified, config.authSecret) });
+    } catch (error) {
+      next(error);
     }
-    res.json({ user: { id: user.id, email: user.email, current_tier: user.current_tier }, token: issueToken(user, config.authSecret) });
+  });
+
+  router.post("/auth/resend-code", async (req, res, next) => {
+    try {
+      const email = normalizeEmail(req.body.email);
+      const user = await repos.users.findByEmail(email);
+      // Do not disclose whether an unknown address has an account.
+      if (!user || user.email_verified) return res.json({ status: "verification_required", email });
+      const sent = await sendSignupCode(email);
+      res.json({ status: "verification_required", email, ...sent });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post("/auth/signin", async (req, res, next) => {
+    try {
+      const email = normalizeEmail(req.body.email);
+      const user = await repos.users.findByEmail(email);
+      if (!user || !(await verifyPassword(String(req.body.password || ""), user.password_hash))) {
+        return res.status(401).json({ error: "Invalid email or password." });
+      }
+      if (!user.email_verified) {
+        // Correct password, unproven address: resume verification instead of issuing a token.
+        const sent = await sendSignupCode(email).catch(() => ({}));
+        return res.status(403).json({
+          error: "Confirm your email address to finish creating this account.",
+          status: "verification_required",
+          email,
+          ...sent
+        });
+      }
+      res.json({ user: publicUser(user), token: issueToken(user, config.authSecret) });
+    } catch (error) {
+      next(error);
+    }
   });
 
   const requireAuth = authMiddleware(repos, config.authSecret);
   router.get("/me", requireAuth, (req, res) => res.json({ user: req.user }));
-  router.get("/carousels", requireAuth, (req, res) => res.json({ carousels: repos.carousels.listForUser(req.user.id) }));
-  router.get("/carousels/:id", requireAuth, (req, res) => {
-    const carousel = repos.carousels.findResultOwned(req.user.id, Number(req.params.id));
-    if (!carousel) return res.status(404).json({ error: "Carousel not found." });
-    res.json({ carousel });
+  router.get("/carousels", requireAuth, async (req, res, next) => {
+    try {
+      res.json({ carousels: await repos.carousels.listForUser(req.user.id) });
+    } catch (error) {
+      next(error);
+    }
+  });
+  router.get("/carousels/:id", requireAuth, async (req, res, next) => {
+    try {
+      const carousel = await repos.carousels.findResultOwned(req.user.id, req.params.id);
+      if (!carousel) return res.status(404).json({ error: "Carousel not found." });
+      res.json({ carousel });
+    } catch (error) {
+      next(error);
+    }
   });
   router.get("/carousels/:id/download", requireAuth, async (req, res, next) => {
     try {
-    const carousel = repos.carousels.findResultOwned(req.user.id, Number(req.params.id));
+    const carousel = await repos.carousels.findResultOwned(req.user.id, req.params.id);
     if (!carousel) return res.status(404).json({ error: "Carousel not found." });
 
     const images = new Map((carousel.images_generated || []).map((image) => [image.slide_number, image]));
@@ -95,10 +187,14 @@ export function createRouter({ repos, aiClient, config }) {
       next(error);
     }
   });
-  router.delete("/carousels/:id", requireAuth, (req, res) => {
-    const deleted = repos.carousels.deleteOwned(req.user.id, Number(req.params.id));
-    if (!deleted) return res.status(404).json({ error: "Carousel not found." });
-    res.json({ ok: true });
+  router.delete("/carousels/:id", requireAuth, async (req, res, next) => {
+    try {
+      const deleted = await repos.carousels.deleteOwned(req.user.id, req.params.id);
+      if (!deleted) return res.status(404).json({ error: "Carousel not found." });
+      res.json({ ok: true });
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.post("/carousel/generate", requireAuth, async (req, res, next) => {
@@ -162,7 +258,7 @@ export function createRouter({ repos, aiClient, config }) {
       const result = await publishCarousel({
         repos,
         userId: req.user.id,
-        carouselId: Number(req.body.carouselId),
+        carouselId: req.body.carouselId,
         platforms: req.body.platforms || [],
         caption: req.body.caption || "",
         config

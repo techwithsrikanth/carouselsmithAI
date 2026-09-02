@@ -11,12 +11,16 @@
     "server": "node --env-file-if-exists=.env src/server/index.js",
     "client": "vite --host 127.0.0.1",
     "test": "node --test",
-    "build": "vite build"
+    "build": "vite build",
+    "migrate:turso": "node --env-file-if-exists=.env scripts/migrate-to-turso.mjs",
+    "mail:check": "node --env-file-if-exists=.env scripts/check-mail.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.12.0",
+    "@libsql/client": "^0.17.4",
     "@vitejs/plugin-react": "^4.3.4",
     "express": "^4.19.2",
+    "nodemailer": "^9.1.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.1.1",

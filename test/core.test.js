@@ -18,9 +18,11 @@ import { instagramCarouselBody, linkedinPostBody } from "../src/server/social/pr
 import { publishCarousel } from "../src/server/social/publish.js";
 import { createZip } from "../src/server/utils/zip.js";
 import { buildPromptImproverPrompt } from "../src/server/ai/prompts.js";
+import { createOtpService, hashCode, otpPolicy, OTP_PURPOSE } from "../src/server/auth/otp.js";
+import { validatePassword, validateSignupEmail } from "../src/server/auth/email.js";
 
-function fakeRepos() {
-  const db = openDatabase(":memory:");
+async function fakeRepos() {
+  const db = await openDatabase(":memory:");
   return { db, repos: createRepositories(db) };
 }
 
@@ -130,7 +132,7 @@ function fakeAi({ quota = false } = {}) {
   };
 }
 
-test("config supports configurable Gemini models", () => {
+test("config supports configurable Gemini models", async () => {
   const config = getConfig({
     GEMINI_TEXT_MODEL: "gemini-3.1-flash-lite",
     GEMINI_IMAGE_MODEL: "gemini-3-pro-image",
@@ -149,7 +151,7 @@ test("config supports configurable Gemini models", () => {
   assert.equal(config.imageFallbackProvider, "openai");
 });
 
-test("OpenAI web search requests do not use JSON mode", () => {
+test("OpenAI web search requests do not use JSON mode", async () => {
   const grounded = buildOpenAiTextBody({
     model: "gpt-4.1-mini",
     content: [{ type: "input_text", text: "Return JSON." }],
@@ -175,46 +177,109 @@ test("auth hashes passwords and rejects token tampering/expiry", async () => {
 });
 
 test("repositories scope ownership and cascade user deletes", async () => {
-  const { repos } = fakeRepos();
-  const user = repos.users.create({ email: "one@example.com", passwordHash: "hash" });
-  const other = repos.users.create({ email: "two@example.com", passwordHash: "hash" });
-  const carousel = repos.carousels.createWithSlides({
+  const { repos } = await fakeRepos();
+  const user = await repos.users.create({ email: "one@example.com", passwordHash: "hash" });
+  const other = await repos.users.create({ email: "two@example.com", passwordHash: "hash" });
+  const carousel = await repos.carousels.createWithSlides({
     userId: user.id,
     prompt: "AI agents for content operations",
     slides: [{ slide_number: 1, title: "A", body: "B", visual_direction: "layout" }]
   });
-  assert.equal(repos.carousels.findOwned(other.id, carousel.id), null);
-  assert.equal(repos.carousels.findOwned(user.id, carousel.id).slides.length, 1);
-  assert.equal(repos.carousels.findResultOwned(user.id, carousel.id).slides[0].title, "A");
-  assert.equal(repos.carousels.listForUser(user.id)[0].prompt_summary, "AI · Operations");
-  repos.carousels.createWithSlides({
+  assert.equal(await repos.carousels.findOwned(other.id, carousel.id), null);
+  assert.equal((await repos.carousels.findOwned(user.id, carousel.id)).slides.length, 1);
+  assert.equal((await repos.carousels.findResultOwned(user.id, carousel.id)).slides[0].title, "A");
+  assert.equal((await repos.carousels.listForUser(user.id))[0].prompt_summary, "AI · Operations");
+  await repos.carousels.createWithSlides({
     userId: user.id,
     prompt: "A very long prompt about founder led growth loops and customer retention systems",
     promptSummary: "",
     slides: [{ slide_number: 1, title: "A", body: "B", visual_direction: "layout" }]
   });
-  assert.equal(repos.carousels.listForUser(user.id)[0].prompt_summary, "Founder · Led · Growth · Loops");
-  repos.users.delete(user.id);
-  assert.equal(repos.carousels.findOwned(user.id, carousel.id), null);
+  assert.equal((await repos.carousels.listForUser(user.id))[0].prompt_summary, "Founder · Led · Growth · Loops");
+  await repos.users.delete(user.id);
+  assert.equal(await repos.carousels.findOwned(user.id, carousel.id), null);
 });
 
-test("saved carousel results restore generated image URLs", () => {
-  const { repos } = fakeRepos();
-  const user = repos.users.create({ email: "restore@example.com", passwordHash: "hash" });
-  const carousel = repos.carousels.createWithSlides({
+test("carousels are addressed by a globally unique public id, not a row id", async () => {
+  const { repos } = await fakeRepos();
+  const user = await repos.users.create({ email: "public@example.com", passwordHash: "hash" });
+  const make = async (prompt) => await repos.carousels.createWithSlides({
+    userId: user.id,
+    prompt,
+    slides: [{ slide_number: 1, title: prompt, body: "B", visual_direction: "layout" }]
+  });
+  const first = await make("first carousel");
+  const second = await make("second carousel");
+
+  assert.match(first.public_id, /^[0-9a-f-]{36}$/);
+  assert.notEqual(first.public_id, second.public_id);
+  // The public id is what the API hands out and what lookups resolve.
+  assert.equal((await repos.carousels.findResultOwned(user.id, first.public_id)).carousel_id, first.public_id);
+  assert.equal((await repos.carousels.findResultOwned(user.id, first.public_id)).prompt, "first carousel");
+  assert.equal((await repos.carousels.listForUser(user.id))[0].id, second.public_id);
+  // A public id from another deployment/instance resolves to nothing rather than to a
+  // different carousel that happens to occupy the same row id.
+  assert.equal(await repos.carousels.findResultOwned(user.id, "11111111-2222-3333-4444-555555555555"), null);
+  assert.equal(await repos.carousels.deleteOwned(user.id, "11111111-2222-3333-4444-555555555555"), false);
+  assert.equal(await repos.carousels.deleteOwned(user.id, first.public_id), true);
+  assert.equal(await repos.carousels.findResultOwned(user.id, first.public_id), null);
+});
+
+test("two instances seeded from the same snapshot never collide on public ids", async () => {
+  // Reproduces the Vercel failure: every cold start copies the bundled snapshot into /tmp,
+  // so AUTOINCREMENT hands the same row id to unrelated carousels on different instances.
+  const instanceA = (await fakeRepos()).repos;
+  const instanceB = (await fakeRepos()).repos;
+  const userA = await instanceA.users.create({ email: "same@example.com", passwordHash: "hash" });
+  const userB = await instanceB.users.create({ email: "same@example.com", passwordHash: "hash" });
+  const make = async (repos, userId, prompt) => await repos.carousels.createWithSlides({
+    userId,
+    prompt,
+    slides: [{ slide_number: 1, title: prompt, body: "B", visual_direction: "layout" }]
+  });
+  const onA = await make(instanceA, userA.id, "made on instance A");
+  const onB = await make(instanceB, userB.id, "made on instance B");
+
+  assert.equal(onA.id, onB.id, "row ids still collide across instances");
+  assert.notEqual(onA.public_id, onB.public_id, "public ids must not collide");
+  // Asking instance B for a carousel created on instance A is a miss, not another carousel.
+  assert.equal(await instanceB.carousels.findResultOwned(userB.id, onA.public_id), null);
+});
+
+test("history is ordered newest first with a stable tiebreak", async () => {
+  const { repos } = await fakeRepos();
+  const user = await repos.users.create({ email: "order@example.com", passwordHash: "hash" });
+  const make = async (prompt) => await repos.carousels.createWithSlides({
+    userId: user.id,
+    prompt,
+    slides: [{ slide_number: 1, title: prompt, body: "B", visual_direction: "layout" }]
+  });
+  // Created inside the same second, so CURRENT_TIMESTAMP alone cannot order these.
+  const ids = [];
+  for (const prompt of ["alpha topic", "bravo topic", "charlie topic", "delta topic"]) {
+    ids.push((await make(prompt)).public_id);
+  }
+  const listed = (await repos.carousels.listForUser(user.id)).map((carousel) => carousel.id);
+  assert.deepEqual(listed, [...ids].reverse(), "newest generation must be first");
+});
+
+test("saved carousel results restore generated image URLs", async () => {
+  const { repos } = await fakeRepos();
+  const user = await repos.users.create({ email: "restore@example.com", passwordHash: "hash" });
+  const carousel = await repos.carousels.createWithSlides({
     userId: user.id,
     prompt: "AI operations playbook",
     slides: [{ slide_number: 1, title: "AI Ops", body: "Build once.", visual_direction: "minimal" }],
     images: [{ slide_number: 1, url: "/generated/slide-1.png", image_prompt: "prompt" }]
   });
-  const restored = repos.carousels.findResultOwned(user.id, carousel.id);
+  const restored = await repos.carousels.findResultOwned(user.id, carousel.id);
   assert.equal(restored.slides[0].title, "AI Ops");
   assert.equal(restored.images_generated[0].url, "/generated/slide-1.png");
 });
 
-test("saved carousel results restore research, checks, and caption artifacts", () => {
-  const { repos } = fakeRepos();
-  const user = repos.users.create({ email: "artifact@example.com", passwordHash: "hash" });
+test("saved carousel results restore research, checks, and caption artifacts", async () => {
+  const { repos } = await fakeRepos();
+  const user = await repos.users.create({ email: "artifact@example.com", passwordHash: "hash" });
   const artifact = {
     generation_input: {
       prompt: "AI proof carousel",
@@ -231,14 +296,14 @@ test("saved carousel results restore research, checks, and caption artifacts", (
     fact_check: [{ claim: "Proof matters", status: "Verified Against Retrieved Source" }],
     images_generated: [{ slide_number: 1, url: "/generated/artifact.png" }]
   };
-  const carousel = repos.carousels.createWithSlides({
+  const carousel = await repos.carousels.createWithSlides({
     userId: user.id,
     prompt: "AI proof carousel",
     slides: artifact.slides,
     images: artifact.images_generated,
     artifact
   });
-  const restored = repos.carousels.findResultOwned(user.id, carousel.id);
+  const restored = await repos.carousels.findResultOwned(user.id, carousel.id);
   assert.equal(restored.generation_input.instagramHandle, "@proof");
   assert.equal(restored.generation_input.sourceText, "internal notes");
   assert.equal(restored.generation_input.totalSlides, 5);
@@ -250,21 +315,21 @@ test("saved carousel results restore research, checks, and caption artifacts", (
   assert.equal(restored.fact_check[0].status, "Verified Against Retrieved Source");
 });
 
-test("saved carousel delete is owner scoped", () => {
-  const { repos } = fakeRepos();
-  const user = repos.users.create({ email: "delete@example.com", passwordHash: "hash" });
-  const other = repos.users.create({ email: "other-delete@example.com", passwordHash: "hash" });
-  const carousel = repos.carousels.createWithSlides({
+test("saved carousel delete is owner scoped", async () => {
+  const { repos } = await fakeRepos();
+  const user = await repos.users.create({ email: "delete@example.com", passwordHash: "hash" });
+  const other = await repos.users.create({ email: "other-delete@example.com", passwordHash: "hash" });
+  const carousel = await repos.carousels.createWithSlides({
     userId: user.id,
     prompt: "founder led growth loops",
     slides: [{ slide_number: 1, title: "Growth Loops", body: "Retain users.", visual_direction: "minimal" }]
   });
-  assert.equal(repos.carousels.deleteOwned(other.id, carousel.id), false);
-  assert.equal(repos.carousels.deleteOwned(user.id, carousel.id), true);
-  assert.equal(repos.carousels.findOwned(user.id, carousel.id), null);
+  assert.equal(await repos.carousels.deleteOwned(other.id, carousel.id), false);
+  assert.equal(await repos.carousels.deleteOwned(user.id, carousel.id), true);
+  assert.equal(await repos.carousels.findOwned(user.id, carousel.id), null);
 });
 
-test("zip export packages ordered slides and caption", () => {
+test("zip export packages ordered slides and caption", async () => {
   const zip = createZip([
     { name: "slide-01.png", data: Buffer.from("one") },
     { name: "slide-02.svg", data: Buffer.from("<svg />") },
@@ -277,12 +342,12 @@ test("zip export packages ordered slides and caption", () => {
   assert.equal(zip.readUInt32LE(zip.length - 22), 0x06054b50);
 });
 
-test("prompt summaries store compact history keywords", () => {
+test("prompt summaries store compact history keywords", async () => {
   assert.equal(summarizePrompt("How AI agents are changing content operations for small agencies"), "AI · Operations · Agencies");
   assert.equal(summarizePrompt("the and with"), "Untitled idea");
 });
 
-test("json extraction, handles, and prompt builder enforce constraints", () => {
+test("json extraction, handles, and prompt builder enforce constraints", async () => {
   assert.deepEqual(extractJson("```json\n{\"ok\":true}\n```"), { ok: true });
   assert.equal(extractJsonCandidate("Here is the JSON:\n{\"ok\":true}\nDone."), "{\"ok\":true}");
   assert.equal(normalizeInstagramHandle(" instagram.com/My Brand/ "), "@MyBrand");
@@ -303,7 +368,7 @@ test("json extraction, handles, and prompt builder enforce constraints", () => {
   assert.match(prompt, /random timestamps/);
 });
 
-test("prompt improver prompt preserves intent and asks for better generation detail", () => {
+test("prompt improver prompt preserves intent and asks for better generation detail", async () => {
   const prompt = buildPromptImproverPrompt({
     prompt: "top events in Bengaluru next 5 days",
     instagramHandle: "@things2doinblr",
@@ -315,7 +380,7 @@ test("prompt improver prompt preserves intent and asks for better generation det
   assert.match(prompt, /realistic, high-quality images/);
 });
 
-test("event prompts demand live verification and cover-plus-event slide plan", () => {
+test("event prompts demand live verification and cover-plus-event slide plan", async () => {
   const researchPrompt = buildResearchPrompt({
     prompt: "events happening in Bengaluru for the next 5 days",
     sourceText: ""
@@ -337,7 +402,7 @@ test("event prompts demand live verification and cover-plus-event slide plan", (
   assert.match(slidesPrompt, /realistic collage starter page/);
 });
 
-test("event filtering rejects stale dates and event renderer keeps sourced text", () => {
+test("event filtering rejects stale dates and event renderer keeps sourced text", async () => {
   assert.equal(isEventCarousel("events happening in Bengaluru for the next 5 days"), true);
   const events = verifiedEventsForWindow([
     { name: "Current Show", date: "2026-07-20", source_url: "https://luma.com/current", venue: "Indiranagar", image_url: "https://luma.com/current.jpg" },
@@ -368,7 +433,7 @@ test("event filtering rejects stale dates and event renderer keeps sourced text"
   assert.doesNotMatch(svg, /2024-11-20/);
 });
 
-test("event renderer supports final CTA slides without fake event data", () => {
+test("event renderer supports final CTA slides without fake event data", async () => {
   const image = renderEventPosterSlide({
     slide: {
       slide_number: 7,
@@ -389,7 +454,7 @@ test("event renderer supports final CTA slides without fake event data", () => {
   assert.doesNotMatch(svg, /Verification Required/);
 });
 
-test("style upload sanitizer keeps only supported visual references", () => {
+test("style upload sanitizer keeps only supported visual references", async () => {
   const uploads = normalizeStyleUploads([
     { name: "one.png", mimeType: "image/png", data: "data:image/png;base64,abc" },
     { name: "deck.pdf", mimeType: "application/pdf", data: "xyz" },
@@ -399,7 +464,7 @@ test("style upload sanitizer keeps only supported visual references", () => {
   assert.equal(uploads[0].data, "abc");
 });
 
-test("social post renderer locks account chrome and plain numeric counter", () => {
+test("social post renderer locks account chrome and plain numeric counter", async () => {
   const image = renderSocialPostSlide({
     slide: { slide_number: 4, title: "The Future of AI?", body: "KIMI represents a pivotal moment." },
     handle: "@srikanth",
@@ -413,8 +478,8 @@ test("social post renderer locks account chrome and plain numeric counter", () =
 });
 
 test("pipeline persists slides, verifies sourced claims, and halts image batch on quota", async () => {
-  const { repos } = fakeRepos();
-  const user = repos.users.create({ email: "creator@example.com", passwordHash: "hash" });
+  const { repos } = await fakeRepos();
+  const user = await repos.users.create({ email: "creator@example.com", passwordHash: "hash" });
   const result = await runCarouselPipeline({
     input: { prompt: "AI content operations", totalSlides: 4, instagramHandle: "@creator" },
     user,
@@ -425,12 +490,12 @@ test("pipeline persists slides, verifies sourced claims, and halts image batch o
   assert.equal(result.slides.length, 4);
   assert.equal(result.fact_check[0].status, "Verified Against Retrieved Source");
   assert.equal(result.images_generated.filter((image) => image.skipped).length, 3);
-  assert.equal(repos.carousels.findOwned(user.id, result.carousel_id).slides.length, 4);
+  assert.equal((await repos.carousels.findOwned(user.id, result.carousel_id)).slides.length, 4);
 });
 
 test("pipeline sends uploaded screenshots to multimodal style learning", async () => {
-  const { repos } = fakeRepos();
-  const user = repos.users.create({ email: "style@example.com", passwordHash: "hash" });
+  const { repos } = await fakeRepos();
+  const user = await repos.users.create({ email: "style@example.com", passwordHash: "hash" });
   let seenUploadCount = 0;
   const ai = fakeAi();
   const originalGenerateJson = ai.generateJson;
@@ -458,8 +523,8 @@ test("pipeline sends uploaded screenshots to multimodal style learning", async (
 });
 
 test("pipeline renders verified event carousels deterministically", async () => {
-  const { repos } = fakeRepos();
-  const user = repos.users.create({ email: "events@example.com", passwordHash: "hash" });
+  const { repos } = await fakeRepos();
+  const user = await repos.users.create({ email: "events@example.com", passwordHash: "hash" });
   const result = await runCarouselPipeline({
     input: {
       prompt: "go through the events happening in bengaluru for the next 5 days and put the top 5 events",
@@ -478,12 +543,12 @@ test("pipeline renders verified event carousels deterministically", async () => 
   assert.equal(result.images_generated.some((image) => image.image_prompt?.includes("No readable text")), true);
 });
 
-test("verification marks missing source URLs honestly", () => {
+test("verification marks missing source URLs honestly", async () => {
   const [check] = verifyClaims([{ claim: "Unsourced", value: "10x", source_url: "https://missing.test" }], []);
   assert.equal(check.status, "Verification Required");
 });
 
-test("oauth state and provider bodies are deterministic", () => {
+test("oauth state and provider bodies are deterministic", async () => {
   const state = signOAuthState({ userId: 1, provider: "linkedin" }, "secret");
   assert.equal(verifyOAuthState(state, "secret").provider, "linkedin");
   assert.equal(verifyOAuthState(`${state}x`, "secret"), null);
@@ -492,9 +557,9 @@ test("oauth state and provider bodies are deterministic", () => {
 });
 
 test("publish returns honest not-connected errors", async () => {
-  const { repos } = fakeRepos();
-  const user = repos.users.create({ email: "p@example.com", passwordHash: "hash" });
-  const carousel = repos.carousels.createWithSlides({ userId: user.id, prompt: "topic", slides: [{ slide_number: 1, title: "A", body: "B", visual_direction: "layout" }] });
+  const { repos } = await fakeRepos();
+  const user = await repos.users.create({ email: "p@example.com", passwordHash: "hash" });
+  const carousel = await repos.carousels.createWithSlides({ userId: user.id, prompt: "topic", slides: [{ slide_number: 1, title: "A", body: "B", visual_direction: "layout" }] });
   const results = await publishCarousel({
     repos,
     userId: user.id,
@@ -504,4 +569,86 @@ test("publish returns honest not-connected errors", async () => {
     config: { linkedin: {}, instagram: {} }
   });
   assert.equal(results.linkedin.status, 503);
+});
+
+test("signup email validation rejects malformed and disposable addresses", async () => {
+  assert.equal(validateSignupEmail("").ok, false);
+  assert.equal(validateSignupEmail("not-an-email").ok, false);
+  assert.equal(validateSignupEmail("no@tld").ok, false);
+  assert.equal(validateSignupEmail("throwaway@mailinator.com").ok, false);
+  assert.match(validateSignupEmail("throwaway@yopmail.com").reason, /Disposable/);
+  assert.equal(validateSignupEmail("  Real.User@Example.COM ").email, "real.user@example.com");
+  assert.equal(validatePassword("short").ok, false);
+  assert.equal(validatePassword("longenough123").ok, true);
+});
+
+test("otp codes are stored hashed, single-use, and expiring", async () => {
+  const { repos } = await fakeRepos();
+  let clock = 1_000_000;
+  const otp = createOtpService({ repos, secret: "test-secret", now: () => clock });
+  const email = "otp@example.com";
+
+  const { code } = await otp.issue({ email, purpose: OTP_PURPOSE.SIGNUP });
+  assert.match(code, /^\d{6}$/);
+
+  // Never persisted in readable form.
+  const stored = await repos.emailOtps.findActive(email, OTP_PURPOSE.SIGNUP);
+  assert.notEqual(stored.code_hash, code);
+  assert.equal(stored.code_hash, hashCode({ code, email, purpose: OTP_PURPOSE.SIGNUP, secret: "test-secret" }));
+
+  assert.equal((await otp.verify({ email, purpose: OTP_PURPOSE.SIGNUP, code: "000000" })).ok, false);
+  assert.equal((await otp.verify({ email, purpose: OTP_PURPOSE.SIGNUP, code })).ok, true);
+  // Single use: the same code cannot be replayed.
+  assert.equal((await otp.verify({ email, purpose: OTP_PURPOSE.SIGNUP, code })).ok, false);
+
+  clock += otpPolicy.resendCooldownMs;
+  const fresh = await otp.issue({ email, purpose: OTP_PURPOSE.SIGNUP });
+  clock += otpPolicy.ttlMs + 1;
+  const expired = await otp.verify({ email, purpose: OTP_PURPOSE.SIGNUP, code: fresh.code });
+  assert.equal(expired.ok, false);
+  assert.match(expired.reason, /expired/i);
+});
+
+test("otp guessing is capped and issuing is throttled", async () => {
+  const { repos } = await fakeRepos();
+  let clock = 5_000_000;
+  const otp = createOtpService({ repos, secret: "test-secret", now: () => clock });
+  const email = "brute@example.com";
+  const { code } = await otp.issue({ email, purpose: OTP_PURPOSE.SIGNUP });
+
+  for (let attempt = 0; attempt < otpPolicy.maxAttempts; attempt += 1) {
+    assert.equal((await otp.verify({ email, purpose: OTP_PURPOSE.SIGNUP, code: "999999" })).ok, false);
+  }
+  // Even the correct code is refused once the attempt budget is spent.
+  const afterCap = await otp.verify({ email, purpose: OTP_PURPOSE.SIGNUP, code });
+  assert.equal(afterCap.ok, false);
+
+  // Re-issuing immediately is rate limited.
+  await assert.rejects(() => otp.issue({ email, purpose: OTP_PURPOSE.SIGNUP }), /wait \d+s/);
+  clock += otpPolicy.resendCooldownMs;
+  await assert.doesNotReject(() => otp.issue({ email, purpose: OTP_PURPOSE.SIGNUP }));
+});
+
+test("issuing a new code invalidates the previous one", async () => {
+  const { repos } = await fakeRepos();
+  let clock = 9_000_000;
+  const otp = createOtpService({ repos, secret: "test-secret", now: () => clock });
+  const email = "rotate@example.com";
+  const first = await otp.issue({ email, purpose: OTP_PURPOSE.SIGNUP });
+  clock += otpPolicy.resendCooldownMs;
+  const second = await otp.issue({ email, purpose: OTP_PURPOSE.SIGNUP });
+
+  assert.equal((await otp.verify({ email, purpose: OTP_PURPOSE.SIGNUP, code: first.code })).ok, false);
+  assert.equal((await otp.verify({ email, purpose: OTP_PURPOSE.SIGNUP, code: second.code })).ok, true);
+});
+
+test("existing accounts are grandfathered but new signups start unverified", async () => {
+  const { repos } = await fakeRepos();
+  const legacy = await repos.users.create({ email: "legacy@example.com", passwordHash: "hash", emailVerified: 1 });
+  assert.equal(legacy.email_verified, 1);
+  const fresh = await repos.users.create({ email: "fresh@example.com", passwordHash: "hash" });
+  assert.equal(fresh.email_verified, 0);
+  const verified = await repos.users.markVerified(fresh.id);
+  assert.equal(verified.email_verified, 1);
+  assert.ok(verified.verified_at);
 });

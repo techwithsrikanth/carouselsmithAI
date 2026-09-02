@@ -92,6 +92,7 @@ npm run server
 npm run client
 npm test
 npm run build
+npm run migrate:turso
 ```
 
 ## Environment Variables
@@ -108,6 +109,13 @@ npm run build
 | `IMAGE_PROVIDER` | Primary image provider |
 | `IMAGE_FALLBACK_PROVIDER` | Optional image fallback provider |
 | `AUTH_SECRET` | JWT signing secret |
+| `SMTP_HOST` | SMTP server for verification emails; unset logs codes to the console |
+| `SMTP_PORT` | SMTP port (587 STARTTLS, 465 implicit TLS) |
+| `SMTP_USER` | SMTP username |
+| `SMTP_PASSWORD` | SMTP password or app password |
+| `MAIL_FROM` | From address on verification emails |
+| `TURSO_DATABASE_URL` | Turso database URL; enables shared durable storage |
+| `TURSO_AUTH_TOKEN` | Turso auth token |
 | `DB_PATH` | Optional SQLite path. On Vercel this defaults to `/tmp/carouselsmith.sqlite` |
 | `GENERATED_DIR` | Optional generated slide directory. On Vercel this defaults to `/tmp/carouselsmith-generated` |
 | `PORT` | API port |
@@ -129,8 +137,14 @@ Social publishing variables are also available in `.env.example` for future Link
 
 ## Notes
 
+- Signup requires email verification. The account is created unverified, a 6-digit code is emailed, and no session token is issued until `/auth/verify-email` succeeds. Codes are stored only as HMACs, expire in 10 minutes, allow 5 attempts, and are single-use. Signin is password-only once the address is confirmed.
+- Disposable-email domains are rejected at signup. Accounts that existed before verification shipped are grandfathered as verified by a one-time migration.
+- Without SMTP configured the app prints codes to the server console so local development works; in production a missing SMTP host is a startup error rather than a silent non-delivery.
+
 - Generated carousels are stored locally and can be reloaded from history.
 - Downloaded ZIPs contain PNG slides plus caption text.
 - The app avoids mock carousel fallbacks in production paths; provider or billing failures are surfaced as real errors.
 - For time-sensitive prompts, such as events happening in the next 5 days, the pipeline asks the model to verify current dates and trusted sources before rendering.
-- Vercel deployments use serverless functions. SQLite and generated slide files are written to `/tmp`, which is not long-term persistent storage. Move production history to Turso/Supabase/Neon and slide files to S3/R2/Vercel Blob before onboarding real users.
+- Deployed history is stored in Turso (libSQL). Set `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` and every serverless instance reads and writes the same durable database. Without them the app falls back to a local SQLite file.
+- Carousels are addressed by a UUID `public_id`, never by the SQLite row id. Row ids are only unique within one database file, so a serverless instance that booted from a different snapshot could otherwise return a different carousel for the same id.
+- Generated slide image files are still written to the local filesystem (`/tmp` on Vercel), so images from an older deploy can 404 even though the carousel record itself survives. Moving them to S3/R2/Vercel Blob is the remaining piece.

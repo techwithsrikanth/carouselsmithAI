@@ -40,14 +40,23 @@ export function verifyToken(token, secret, now = Date.now()) {
 }
 
 export function authMiddleware(repos, secret) {
-  return (req, res, next) => {
-    const header = req.get("authorization") || "";
-    const token = header.toLowerCase().startsWith("bearer ") ? header.slice(7) : "";
-    const payload = verifyToken(token, secret);
-    if (!payload) return res.status(401).json({ error: "Authentication required" });
-    const user = repos.users.findById(payload.sub);
-    if (!user) return res.status(401).json({ error: "Authentication required" });
-    req.user = user;
-    next();
+  return async (req, res, next) => {
+    try {
+      const header = req.get("authorization") || "";
+      const token = header.toLowerCase().startsWith("bearer ") ? header.slice(7) : "";
+      const payload = verifyToken(token, secret);
+      if (!payload) return res.status(401).json({ error: "Authentication required" });
+      const user = await repos.users.findById(payload.sub);
+      if (!user) return res.status(401).json({ error: "Authentication required" });
+      // Defence in depth: tokens are only issued after verification, but a token minted
+      // before that rule existed must not keep an unverified account alive.
+      if (!user.email_verified) {
+        return res.status(403).json({ error: "Confirm your email address to continue.", status: "verification_required", email: user.email });
+      }
+      req.user = user;
+      next();
+    } catch (error) {
+      next(error);
+    }
   };
 }

@@ -448,7 +448,7 @@ Do not copy logos, private marks, personal likenesses, or exact source text. Do 
     fact_check: verifyClaims(research.statistics, research.references),
     images_generated: images
   };
-  const carousel = repos.carousels.createWithSlides({
+  const carousel = await repos.carousels.createWithSlides({
     userId: user.id,
     prompt: input.prompt,
     promptSummary: summarizePrompt(input.prompt),
@@ -457,7 +457,8 @@ Do not copy logos, private marks, personal likenesses, or exact source text. Do 
     artifact
   });
   return {
-    carousel_id: carousel.id,
+    // Public id, so the client never holds an identifier that another instance can reuse.
+    carousel_id: carousel.public_id,
     ...artifact
   };
 }
@@ -552,7 +553,7 @@ export async function runTemplateCarouselPipeline({ input, user, aiClient, repos
     fact_check: verifyClaims(research.statistics, research.references),
     images_generated: images
   };
-  const carousel = repos.carousels.createWithSlides({
+  const carousel = await repos.carousels.createWithSlides({
     userId: user.id,
     prompt: input.prompt,
     promptSummary: summarizePrompt(input.prompt),
@@ -561,7 +562,8 @@ export async function runTemplateCarouselPipeline({ input, user, aiClient, repos
     artifact
   });
   return {
-    carousel_id: carousel.id,
+    // Public id, so the client never holds an identifier that another instance can reuse.
+    carousel_id: carousel.public_id,
     ...artifact
   };
 }

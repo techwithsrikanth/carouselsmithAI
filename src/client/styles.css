@@ -547,3 +547,15 @@ pre {
   .grid { padding: 0 16px 20px; }
   .form-pair, .color-grid { grid-template-columns: 1fr; }
 }
+
+.auth-hint {
+  margin: -4px 0 4px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #6b6459;
+}
+
+.auth-card .success {
+  color: #2f7d6d;
+  font-size: 13px;
+}

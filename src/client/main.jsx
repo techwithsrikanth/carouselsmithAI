@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Link, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import "./styles.css";
@@ -15,7 +15,13 @@ const api = {
       }
     });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.error || `Request failed: ${response.status}`);
+    if (!response.ok) {
+      // Carry the response body onto the error so callers can react to states like
+      // verification_required instead of only seeing a message string.
+      const error = new Error(data.error || `Request failed: ${response.status}`);
+      Object.assign(error, data, { httpStatus: response.status });
+      throw error;
+    }
     return data;
   },
   async download(path) {
@@ -157,23 +163,129 @@ function Landing() {
   );
 }
 
+function VerifyEmailCard({ email, notice, onVerified, onCancel }) {
+  const [code, setCode] = useState("");
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState(notice || "");
+  const [busy, setBusy] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return undefined;
+    const timer = setTimeout(() => setCooldown(cooldown - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [cooldown]);
+
+  async function submit(event) {
+    event.preventDefault();
+    setError("");
+    setBusy(true);
+    try {
+      const data = await api.request("/auth/verify-email", { method: "POST", body: JSON.stringify({ email, code }) });
+      onVerified(data);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function resend() {
+    setError("");
+    setMessage("");
+    try {
+      const data = await api.request("/auth/resend-code", { method: "POST", body: JSON.stringify({ email }) });
+      setMessage(data.delivered === false ? "SMTP is not configured, so the code was printed to the server console." : "A new code is on its way.");
+      setCooldown(60);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  return (
+    <form className="auth-card" onSubmit={submit}>
+      <Link to="/"><Logo /></Link>
+      <h1>Confirm your email</h1>
+      <p className="auth-hint">We sent a 6-digit code to <strong>{email}</strong>. It expires in 10 minutes.</p>
+      <label>
+        Verification code
+        <input
+          value={code}
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          maxLength={6}
+          placeholder="123456"
+          onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
+        />
+      </label>
+      {error && <p className="error">{error}</p>}
+      {message && <p className="success">{message}</p>}
+      <button className="button primary" disabled={busy || code.length < 6}>{busy ? "Confirming..." : "Confirm email"}</button>
+      <button type="button" className="linkish" disabled={cooldown > 0} onClick={resend}>
+        {cooldown > 0 ? `Resend code in ${cooldown}s` : "Resend code"}
+      </button>
+      <button type="button" className="linkish" onClick={onCancel}>Use a different email</button>
+    </form>
+  );
+}
+
 function Auth() {
   const [mode, setMode] = useState("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  // Set once signup (or a signin against an unverified account) needs a code.
+  const [pendingVerification, setPendingVerification] = useState(null);
   const navigate = useNavigate();
+
+  function completeSignin(data) {
+    localStorage.setItem("token", data.token);
+    navigate("/dashboard");
+  }
 
   async function submit(event) {
     event.preventDefault();
     setError("");
+    setBusy(true);
     try {
       const data = await api.request(`/auth/${mode}`, { method: "POST", body: JSON.stringify({ email, password }) });
-      localStorage.setItem("token", data.token);
-      navigate("/dashboard");
+      // Signup never returns a token; it returns a pending-verification state.
+      if (data.status === "verification_required") {
+        setPendingVerification({ email: data.email || email, delivered: data.delivered });
+        return;
+      }
+      completeSignin(data);
     } catch (err) {
+      // A signin against an unverified account is a 403 carrying the same pending state.
+      if (err.status === "verification_required") {
+        setPendingVerification({ email: err.email || email, delivered: err.delivered, notice: err.message });
+        return;
+      }
       setError(err.message);
+    } finally {
+      setBusy(false);
     }
+  }
+
+  if (pendingVerification) {
+    return (
+      <main className="auth-page">
+        <VerifyEmailCard
+          email={pendingVerification.email}
+          notice={
+            pendingVerification.delivered === false
+              ? "SMTP is not configured, so the code was printed to the server console."
+              : pendingVerification.notice
+          }
+          onVerified={completeSignin}
+          onCancel={() => {
+            setPendingVerification(null);
+            setPassword("");
+          }}
+        />
+      </main>
+    );
   }
 
   return (
@@ -181,11 +293,12 @@ function Auth() {
       <form className="auth-card" onSubmit={submit}>
         <Link to="/"><Logo /></Link>
         <h1>{mode === "signin" ? "Welcome back" : "Create your studio"}</h1>
+        {mode === "signup" && <p className="auth-hint">We email a 6-digit code to confirm your address before the account is created.</p>}
         <label>Email<input value={email} autoComplete="email" onChange={(event) => setEmail(event.target.value)} /></label>
         <label>Password<input type="password" value={password} autoComplete={mode === "signin" ? "current-password" : "new-password"} onChange={(event) => setPassword(event.target.value)} /></label>
         {error && <p className="error">{error}</p>}
-        <button className="button primary">{mode === "signin" ? "Sign in" : "Sign up"}</button>
-        <button type="button" className="linkish" onClick={() => setMode(mode === "signin" ? "signup" : "signin")}>
+        <button className="button primary" disabled={busy}>{busy ? "Working..." : mode === "signin" ? "Sign in" : "Send verification code"}</button>
+        <button type="button" className="linkish" onClick={() => { setMode(mode === "signin" ? "signup" : "signin"); setError(""); }}>
           {mode === "signin" ? "Need an account?" : "Already have an account?"}
         </button>
       </form>
@@ -198,7 +311,15 @@ function SlideDeck({ result, loading }) {
   const [downloadMessage, setDownloadMessage] = useState("");
   const slides = result?.slides || [];
   const images = new Map((result?.images_generated || []).map((image) => [image.slide_number, image]));
-  const slide = slides[active];
+
+  // Opening a different carousel must not keep the previous slide index, which would either
+  // blank the deck or show slide N of the new carousel.
+  useEffect(() => {
+    setActive(0);
+    setDownloadMessage("");
+  }, [result?.carousel_id]);
+
+  const slide = slides[Math.min(active, Math.max(0, slides.length - 1))];
 
   if (loading) {
     return <section className="deck loading"><span className="pulse" /><h2>Researching sources and building the deck...</h2></section>;
@@ -670,6 +791,8 @@ function Dashboard() {
   const [activeHistoryId, setActiveHistoryId] = useState(null);
   const [draftInput, setDraftInput] = useState(defaultComposerInput);
   const [workspaceMode, setWorkspaceMode] = useState("generator");
+  const [historyError, setHistoryError] = useState("");
+  const openRequestRef = useRef(0);
 
   useEffect(() => {
     if (!authed) return;
@@ -677,19 +800,31 @@ function Dashboard() {
   }, [authed, result]);
 
   async function openHistoryItem(item) {
+    // Responses can arrive out of order when two items are clicked in quick succession, so
+    // only the newest request is allowed to write state. Without this the slower response
+    // wins and the deck shows a carousel other than the one that is highlighted.
+    const requestId = openRequestRef.current + 1;
+    openRequestRef.current = requestId;
+    setActiveHistoryId(item.id);
     setLoading(true);
     try {
       const data = await api.request(`/carousels/${item.id}`);
+      if (openRequestRef.current !== requestId) return;
       setResult(data.carousel);
-      setActiveHistoryId(item.id);
       setDraftInput(data.carousel.generation_input || { ...defaultComposerInput, prompt: data.carousel.prompt, totalSlides: data.carousel.slides?.length || 7 });
       setWorkspaceMode(data.carousel.generation_input?.template ? "templates" : "generator");
+    } catch (error) {
+      if (openRequestRef.current !== requestId) return;
+      setResult(null);
+      setHistoryError(error.message);
     } finally {
-      setLoading(false);
+      if (openRequestRef.current === requestId) setLoading(false);
     }
   }
 
   function createNewCarousel() {
+    openRequestRef.current += 1;
+    setHistoryError("");
     setResult(null);
     setActiveHistoryId(null);
     setDraftInput({ ...defaultComposerInput });
@@ -698,9 +833,17 @@ function Dashboard() {
 
   async function deleteHistoryItem(event, item) {
     event.stopPropagation();
-    await api.request(`/carousels/${item.id}`, { method: "DELETE" });
+    setHistoryError("");
+    try {
+      await api.request(`/carousels/${item.id}`, { method: "DELETE" });
+    } catch (error) {
+      setHistoryError(error.message);
+      return;
+    }
     setHistory((current) => current.filter((historyItem) => historyItem.id !== item.id));
     if (activeHistoryId === item.id) {
+      // Cancel any in-flight open for the row being removed.
+      openRequestRef.current += 1;
       setActiveHistoryId(null);
       setResult(null);
     }
@@ -715,6 +858,7 @@ function Dashboard() {
           <span>History</span>
         </div>
         <button className="button primary new-carousel" onClick={createNewCarousel}>Create new carousel</button>
+        {historyError && <p className="error">{historyError}</p>}
         {history.length === 0 && <p>No saved runs yet.</p>}
         {history.map((item) => (
           <button
