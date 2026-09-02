@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { summarizePrompt } from "./utils/summary.js";
+import { slideImageUrl } from "./renderers/slideImage.js";
 
 // Public ids are UUIDs; anything purely numeric is treated as an internal row id.
 const isPublicId = (value) => typeof value === "string" && !/^\d+$/.test(value.trim());
@@ -55,7 +56,12 @@ function toCarouselResult(carousel) {
     caption: artifact.caption || "",
     hashtags: artifact.hashtags || [],
     fact_check: artifact.fact_check || [],
-    images_generated: artifact.images_generated?.length ? artifact.images_generated : images
+    // Point rebuildable slides at the API route rather than a file path. Applied on read, so
+    // carousels saved before this existed are repaired without a data migration.
+    images_generated: (artifact.images_generated?.length ? artifact.images_generated : images).map((image) => ({
+      ...image,
+      url: slideImageUrl(carousel.public_id, image) || image.url
+    }))
   };
 }
 
@@ -108,6 +114,17 @@ export function createRepositories(db) {
     async findResultOwned(userId, carouselId) {
       const carousel = await carousels.findOwned(userId, carouselId);
       return carousel ? toCarouselResult(carousel) : null;
+    },
+    /**
+     * Owner-agnostic lookup by public id, used only to serve slide images: an <img> tag
+     * cannot carry an auth header, so access is by unguessable UUID instead.
+     */
+    async findResultByPublicId(publicId) {
+      if (!isPublicId(publicId)) return null;
+      const carousel = await db.get("SELECT * FROM Carousels WHERE public_id = ?", [String(publicId)]);
+      if (!carousel) return null;
+      carousel.slides = await db.all("SELECT * FROM Slides WHERE carousel_id = ? ORDER BY slide_index", [carousel.id]);
+      return toCarouselResult(carousel);
     },
     async deleteOwned(userId, carouselId) {
       if (carouselId === null || carouselId === undefined || carouselId === "") return false;

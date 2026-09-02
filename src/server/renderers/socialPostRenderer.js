@@ -70,6 +70,25 @@ export function isSocialPostDesign(style = {}) {
 
 export function renderSocialPostSlide({ slide, handle, totalSlides, generatedDir, batchId = Date.now(), template = {} }) {
   fs.mkdirSync(generatedDir, { recursive: true });
+  const filename = `carousel-${batchId}-${slide.slide_number}.svg`;
+  fs.writeFileSync(path.join(generatedDir, filename), buildSocialPostSvg({ slide, handle, totalSlides, template }), "utf8");
+  const name = String(template.profileName || "").trim().slice(0, 42) || displayNameFromHandle(handle);
+  const timestamp = String(template.timestamp || "Just now").slice(0, 24);
+  return {
+    slide_number: slide.slide_number,
+    renderer: "social_post",
+    file: filename,
+    url: `/generated/${filename}`,
+    image_prompt: `Deterministic social post renderer: account=${name}, timestamp=${timestamp}, slide=${slide.slide_number}/${totalSlides}`
+  };
+}
+
+/**
+ * Pure: the same inputs always produce byte-identical SVG. That is what lets a slide be
+ * rebuilt on demand from the stored record instead of depending on a file that only exists
+ * in one serverless instance's /tmp.
+ */
+export function buildSocialPostSvg({ slide, handle, totalSlides, template = {} }) {
   const name = String(template.profileName || "").trim().slice(0, 42) || displayNameFromHandle(handle);
   const avatar = imageHref(template.avatarUpload);
   const backgroundColor = colorOr(template.backgroundColor, "#ffffff");
@@ -81,9 +100,7 @@ export function renderSocialPostSlide({ slide, handle, totalSlides, generatedDir
   const headlineLines = wrapText(slide.title, 17, 3);
   const bodyLines = wrapText(slide.body, 32, 7);
   const badgeX = 190 + Math.min(name.length * 18, 270);
-  const filename = `carousel-${batchId}-${slide.slide_number}.svg`;
-  const filePath = path.join(generatedDir, filename);
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
   <rect width="${width}" height="${height}" rx="40" fill="${backgroundColor}"/>
   <rect x="1" y="1" width="${width - 2}" height="${height - 2}" rx="39" fill="none" stroke="${borderColor}" stroke-width="2"/>
 
@@ -108,10 +125,4 @@ export function renderSocialPostSlide({ slide, handle, totalSlides, generatedDir
 
   <text x="980" y="1288" text-anchor="end" font-size="30" font-weight="500" fill="${textColor}">${slide.slide_number}/${totalSlides}</text>
 </svg>`;
-  fs.writeFileSync(filePath, svg, "utf8");
-  return {
-    slide_number: slide.slide_number,
-    url: `/generated/${filename}`,
-    image_prompt: `Deterministic social post renderer: account=${name}, timestamp=${timestamp}, slide=${slide.slide_number}/${totalSlides}`
-  };
 }

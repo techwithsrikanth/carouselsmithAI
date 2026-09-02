@@ -171,16 +171,25 @@ function ctaSvg({ slide, handle, totalSlides, backgroundImage: bg }) {
   </svg>`;
 }
 
+/**
+ * Pure. The background photo is optional: without it the poster still renders every sourced
+ * field over the category colour, which is what lets a slide be rebuilt from the stored
+ * record alone once the original file is gone.
+ */
+export function buildEventPosterSvg({ slide, handle, totalSlides, backgroundImage: bg }) {
+  return slide.slide_number === 1
+    ? coverSvg({ slide, handle, totalSlides, backgroundImage: bg })
+    : eventSvg({ slide, handle, totalSlides, backgroundImage: bg });
+}
+
 export function renderEventPosterSlide({ slide, handle, totalSlides, generatedDir, batchId = Date.now(), backgroundImage: bg, imagePrompt = "" }) {
   fs.mkdirSync(generatedDir, { recursive: true });
   const filename = `carousel-${batchId}-event-${slide.slide_number}.svg`;
-  const filePath = path.join(generatedDir, filename);
-  const svg = slide.slide_number === 1
-    ? coverSvg({ slide, handle, totalSlides, backgroundImage: bg })
-    : eventSvg({ slide, handle, totalSlides, backgroundImage: bg });
-  fs.writeFileSync(filePath, svg, "utf8");
+  fs.writeFileSync(path.join(generatedDir, filename), buildEventPosterSvg({ slide, handle, totalSlides, backgroundImage: bg }), "utf8");
   return {
     slide_number: slide.slide_number,
+    renderer: "event_poster",
+    file: filename,
     url: `/generated/${filename}`,
     image_prompt: imagePrompt || "Deterministic event poster renderer: sourced fields rendered by code to avoid text overlap and wrong dates."
   };

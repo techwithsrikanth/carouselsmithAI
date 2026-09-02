@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import sharp from "sharp";
 import { buildImagePrompt, buildResearchPrompt, buildSlidesPrompt, buildTemplateTextPrompt, chooseDesignSystem } from "./prompts.js";
 import { ensureArray } from "../utils/json.js";
 import { normalizeInstagramHandle } from "../utils/handle.js";
@@ -53,6 +54,24 @@ export function normalizeStyleUploads(styleUploads = []) {
 
 function colorOr(value, fallback) {
   return /^#[0-9a-f]{6}$/i.test(String(value || "")) ? value : fallback;
+}
+
+/**
+ * Keeps the avatar with the record so a slide can be rebuilt later with the right profile
+ * photo. Downscaled to twice its rendered size first, so an uploaded 4 MB photo does not
+ * become 4 MB of base64 inside every stored carousel.
+ */
+async function storableAvatar(upload) {
+  if (!upload?.data) return null;
+  try {
+    const png = await sharp(Buffer.from(upload.data, "base64"))
+      .resize(176, 176, { fit: "cover" })
+      .png({ compressionLevel: 9 })
+      .toBuffer();
+    return { name: upload.name, mimeType: "image/png", data: png.toString("base64") };
+  } catch {
+    return null;
+  }
 }
 
 export function normalizeTemplate(template = {}) {
@@ -432,8 +451,8 @@ Do not copy logos, private marks, personal likenesses, or exact source text. Do 
       instagramHandle: input.instagramHandle || "",
       sourceText: input.sourceText || "",
       totalSlides,
-      profilePhotoUpload: profilePhotoUpload ? { name: profilePhotoUpload.name, mimeType: profilePhotoUpload.mimeType } : null,
-      template: template ? { ...template, avatarUpload: template.avatarUpload ? { name: template.avatarUpload.name, mimeType: template.avatarUpload.mimeType } : null } : null
+      profilePhotoUpload: await storableAvatar(profilePhotoUpload),
+      template: template ? { ...template, avatarUpload: await storableAvatar(template.avatarUpload) } : null
     },
     research_summary: research.key_insights,
     sources_used: research.references,
@@ -538,7 +557,7 @@ export async function runTemplateCarouselPipeline({ input, user, aiClient, repos
       instagramHandle: input.instagramHandle || "",
       sourceText: input.sourceText || "",
       totalSlides,
-      template: { ...template, avatarUpload: template.avatarUpload ? { name: template.avatarUpload.name, mimeType: template.avatarUpload.mimeType } : null }
+      template: { ...template, avatarUpload: await storableAvatar(template.avatarUpload) }
     },
     research_summary: research.key_insights,
     sources_used: research.references,

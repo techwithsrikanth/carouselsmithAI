@@ -1,6 +1,4 @@
 import express from "express";
-import fs from "node:fs";
-import path from "node:path";
 import sharp from "sharp";
 import { hashPassword, issueToken, verifyPassword, authMiddleware } from "./auth.js";
 import { createOtpService, OTP_PURPOSE } from "./auth/otp.js";
@@ -11,17 +9,7 @@ import { linkedinAuthUrl, instagramAuthUrl } from "./social/providers.js";
 import { signOAuthState, verifyOAuthState } from "./social/oauthState.js";
 import { publishCarousel } from "./social/publish.js";
 import { createZip } from "./utils/zip.js";
-
-function safeGeneratedPath(url, generatedDirs = []) {
-  if (!url?.startsWith("/generated/")) return null;
-  const filename = path.basename(url);
-  for (const generatedDir of generatedDirs) {
-    const filePath = path.resolve(generatedDir, filename);
-    const root = `${path.resolve(generatedDir)}${path.sep}`;
-    if (filePath.startsWith(root) && fs.existsSync(filePath)) return filePath;
-  }
-  return null;
-}
+import { resolveSlideImage } from "./renderers/slideImage.js";
 
 function downloadName(summary, id) {
   return String(summary || `carousel-${id}`)
@@ -136,6 +124,33 @@ export function createRouter({ repos, aiClient, config, mailer }) {
     }
   });
 
+  /**
+   * Slide images, rebuilt from the stored record so they never depend on a file that only
+   * exists in one instance's /tmp.
+   *
+   * Unauthenticated on purpose: an <img> tag cannot send an Authorization header. Access is
+   * by unguessable carousel UUID, the same exposure model as a signed asset URL.
+   */
+  router.get("/carousels/:id/slides/:slide.svg", async (req, res, next) => {
+    try {
+      const carousel = await repos.carousels.findResultByPublicId(req.params.id);
+      if (!carousel) return res.status(404).json({ error: "Carousel not found." });
+      const resolved = resolveSlideImage({
+        carousel,
+        slideNumber: req.params.slide,
+        generatedDirs: [config.generatedDir, config.bundledGeneratedDir]
+      });
+      if (!resolved) return res.status(404).json({ error: "Slide not found." });
+      // Immutable: a carousel's slides never change once generated.
+      res.setHeader("cache-control", "public, max-age=31536000, immutable");
+      if (resolved.filePath) return res.sendFile(resolved.filePath);
+      res.setHeader("content-type", "image/svg+xml; charset=utf-8");
+      res.send(resolved.svg);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   const requireAuth = authMiddleware(repos, config.authSecret);
   router.get("/me", requireAuth, (req, res) => res.json({ user: req.user }));
   router.get("/carousels", requireAuth, async (req, res, next) => {
@@ -159,13 +174,17 @@ export function createRouter({ repos, aiClient, config, mailer }) {
     const carousel = await repos.carousels.findResultOwned(req.user.id, req.params.id);
     if (!carousel) return res.status(404).json({ error: "Carousel not found." });
 
-    const images = new Map((carousel.images_generated || []).map((image) => [image.slide_number, image]));
     const files = [];
     for (const slide of carousel.slides || []) {
-      const image = images.get(slide.slide_number);
-      const filePath = safeGeneratedPath(image?.url, [config.generatedDir, config.bundledGeneratedDir]);
-      if (!filePath) continue;
-      const slidePng = await sharp(filePath)
+      // Rebuild rather than read from disk, so exports keep working after the file is gone.
+      const resolved = resolveSlideImage({
+        carousel,
+        slideNumber: slide.slide_number,
+        generatedDirs: [config.generatedDir, config.bundledGeneratedDir]
+      });
+      if (!resolved) continue;
+      const source = resolved.filePath ? resolved.filePath : Buffer.from(resolved.svg, "utf8");
+      const slidePng = await sharp(source, { density: 144 })
         .resize(1080, 1350, { fit: "cover", background: "#fffdfa" })
         .png()
         .toBuffer();

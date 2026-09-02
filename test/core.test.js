@@ -20,6 +20,7 @@ import { createZip } from "../src/server/utils/zip.js";
 import { buildPromptImproverPrompt } from "../src/server/ai/prompts.js";
 import { createOtpService, hashCode, otpPolicy, OTP_PURPOSE } from "../src/server/auth/otp.js";
 import { validatePassword, validateSignupEmail } from "../src/server/auth/email.js";
+import { rendererKindFor, resolveSlideImage, slideImageUrl } from "../src/server/renderers/slideImage.js";
 
 async function fakeRepos() {
   const db = await openDatabase(":memory:");
@@ -651,4 +652,76 @@ test("existing accounts are grandfathered but new signups start unverified", asy
   const verified = await repos.users.markVerified(fresh.id);
   assert.equal(verified.email_verified, 1);
   assert.ok(verified.verified_at);
+});
+
+test("slide images are addressed by a rebuildable route, including legacy records", async () => {
+  // Written before the `renderer` field existed: kind is inferred from the filename.
+  assert.equal(rendererKindFor({ url: "/generated/carousel-1-2.svg" }), "social_post");
+  assert.equal(rendererKindFor({ url: "/generated/carousel-1-event-2.svg" }), "event_poster");
+  assert.equal(rendererKindFor({ url: "/generated/carousel-1-2.png" }), "model");
+  assert.equal(rendererKindFor({ renderer: "social_post", file: "x.png" }), "social_post");
+
+  const id = "11111111-2222-3333-4444-555555555555";
+  assert.equal(slideImageUrl(id, { slide_number: 3, url: "/generated/carousel-1-3.svg" }), `/api/carousels/${id}/slides/3.svg`);
+  // Model images cannot be rebuilt, so they keep the static path.
+  assert.equal(slideImageUrl(id, { slide_number: 3, url: "/generated/carousel-1-3.png" }), "/generated/carousel-1-3.png");
+});
+
+test("a template slide rebuilds from the stored record with no file on disk", async () => {
+  const carousel = {
+    slides: [
+      { slide_number: 1, title: "Indian Markets Face Sudden Correction", body: "The Sensex dropped over 600 points today." },
+      { slide_number: 2, title: "Second Slide", body: "More context here." }
+    ],
+    images_generated: [
+      { slide_number: 1, renderer: "social_post", file: "gone-from-disk.svg" },
+      { slide_number: 2, renderer: "social_post", file: "also-gone.svg" }
+    ],
+    generation_input: {
+      instagramHandle: "@srikanth",
+      template: { profileName: "Srikanth", timestamp: "Just now", backgroundColor: "#ffffff", textColor: "#111111" }
+    }
+  };
+  // generatedDirs is deliberately empty: nothing exists on this "instance".
+  const rebuilt = resolveSlideImage({ carousel, slideNumber: 1, generatedDirs: [] });
+  assert.ok(rebuilt.svg, "must rebuild rather than fail");
+  assert.match(rebuilt.svg, /Indian Markets/);
+  assert.match(rebuilt.svg, /Srikanth/);
+  assert.match(rebuilt.svg, /1\/2/);
+
+  // Deterministic: the same record always produces identical bytes.
+  assert.equal(resolveSlideImage({ carousel, slideNumber: 1, generatedDirs: [] }).svg, rebuilt.svg);
+  assert.equal(resolveSlideImage({ carousel, slideNumber: 99, generatedDirs: [] }), null);
+});
+
+test("an event poster rebuilds without its background instead of 404ing", async () => {
+  const carousel = {
+    slides: [
+      { slide_number: 1, title: "Cover", body: "Body" },
+      {
+        slide_number: 2,
+        title: "Sushi Making Workshop",
+        body: "Hands-on food experience.",
+        event_details: { name: "Sushi Making Workshop", category: "Food", date: "2026-09-10", venue: "Thirdspace", price: "Rs 999", source_url: "https://insider.in/x" }
+      }
+    ],
+    images_generated: [{ slide_number: 2, renderer: "event_poster", file: "gone.svg" }],
+    generation_input: { instagramHandle: "@things2doinblr" }
+  };
+  const rebuilt = resolveSlideImage({ carousel, slideNumber: 2, generatedDirs: [] });
+  assert.ok(rebuilt.svg);
+  // Every sourced field survives even though the background photo does not.
+  assert.match(rebuilt.svg, /Sushi Making/);
+  assert.match(rebuilt.svg, /Thirdspace/);
+  assert.match(rebuilt.svg, /Rs 999/);
+});
+
+test("an unrecoverable model image degrades to a labelled placeholder", async () => {
+  const carousel = {
+    slides: [{ slide_number: 1, title: "T", body: "B" }],
+    images_generated: [{ slide_number: 1, renderer: "model", file: "missing.png" }],
+    generation_input: {}
+  };
+  const resolved = resolveSlideImage({ carousel, slideNumber: 1, generatedDirs: [] });
+  assert.match(resolved.svg, /Slide image unavailable/);
 });
